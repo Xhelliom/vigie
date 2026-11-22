@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vigie</title>
+<style>
+  :root { --fond:#f6f7f5; --carte:#fff; --texte:#1d2320; --doux:#66706a; --accent:#2f6b4f; --alerte:#b3401f; --ligne:#e3e6e2; }
+  @media (prefers-color-scheme: dark) { :root { --fond:#141816; --carte:#1d2320; --texte:#e7ebe8; --doux:#98a39c; --accent:#7cc4a0; --alerte:#f08a68; --ligne:#2c332f; } }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--fond); color:var(--texte); }
+  header { padding:16px; display:flex; flex-wrap:wrap; gap:8px 24px; align-items:baseline; }
+  h1 { margin:0; font-size:20px; } h2 { margin:0 0 8px; font-size:15px; color:var(--accent); }
+  .doux { color:var(--doux); } .alerte { color:var(--alerte); font-weight:600; }
+  main { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; padding:0 16px 16px; }
+  section { background:var(--carte); border:1px solid var(--ligne); border-radius:10px; padding:12px; overflow:hidden; }
+  table { width:100%; border-collapse:collapse; } td { padding:3px 4px; border-top:1px solid var(--ligne); vertical-align:top; overflow-wrap:anywhere; }
+  td.n { text-align:right; white-space:nowrap; word-break:normal; }
+  .grand { font-size:22px; font-weight:600; }
+</style>
+</head>
+<body>
+<header><h1>Vigie — routeur</h1><span id="sys" class="doux"></span></header>
+<main>
+  <section><h2>Internet</h2><div id="wan"></div></section>
+  <section><h2>Gros consommateurs (maintenant)</h2><table id="conso"></table></section>
+  <section><h2>Domaines malveillants bloqués (24 h)</h2><table id="menaces"></table></section>
+  <section><h2>Connexions sans DNS (24 h)</h2><p class="doux">Vers une IP jamais annoncée par le DNS : souvent normal (applis, jeux), à surveiller pour les objets connectés.</p><table id="sansdns"></table></section>
+  <section><h2>Appareils</h2><table id="appareils"></table></section>
+  <section><h2>DNS : qui interroge (24 h)</h2><table id="clients"></table></section>
+  <section><h2>DNS : domaines les plus demandés (24 h)</h2><table id="domaines"></table></section>
+  <section><h2>Nouveaux domaines (24 h)</h2><table id="nouveaux"></table></section>
+  <section><h2>Interfaces</h2><table id="interfaces"></table></section>
+</main>
+<script>
+const o = n => n == null ? "–" : n < 1024 ? n.toFixed(0)+" o" : n < 1048576 ? (n/1024).toFixed(1)+" Kio" : n < 1073741824 ? (n/1048576).toFixed(1)+" Mio" : (n/1073741824).toFixed(2)+" Gio";
+const b = n => n == null ? "–" : (n*8/1e6).toFixed(n*8 < 1e6 ? 2 : 1)+" Mb/s";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const qui = x => esc(x.nom || x.ip);
+const lignes = (id, rows, vide="Rien à signaler") => document.getElementById(id).innerHTML =
+  rows.length ? rows.map(r => "<tr>"+r.map((c,i) => `<td${i==r.length-1?' class="n"':''}>${c}</td>`).join("")+"</tr>").join("") : `<tr><td class="doux">${vide}</td></tr>`;
+async function maj() {
+  try {
+    const e = await (await fetch("api/etat")).json(), s = e.systeme, w = e.interfaces[e.wan] || {};
+    document.getElementById("sys").textContent =
+      `en marche depuis ${(s.uptime/86400).toFixed(1)} j · charge ${s.charge[0].toFixed(2)} · mémoire libre ${o(s.memoire.dispo)} / ${o(s.memoire.totale)}`
+      + (s.temperature ? ` · ${s.temperature.toFixed(0)} °C` : "")
+      + ` · listes : ${s.listes.menaces} domaines malveillants, ${s.listes.pub} pub, ${s.listes.ip} IP`;
+    const h = e.historique_wan;
+    document.getElementById("wan").innerHTML =
+      `<div class="grand">↓ ${b(w.rx)} · ↑ ${b(w.tx)}</div>` +
+      (h ? `<div class="doux">Aujourd'hui : ↓ ${o(h.jour.rx)} ↑ ${o(h.jour.tx)} · Ce mois : ↓ ${o(h.mois.rx)} ↑ ${o(h.mois.tx)}</div>` : "");
+    lignes("conso", e.gros_consommateurs.map(x => [qui(x), b(x.debit)]), "Calme");
+    lignes("menaces", e.dns.menaces.map(x => [`<span class="alerte">${esc(x.domaine)}</span>`, qui(x), x.n]));
+    lignes("sansdns", e.sans_dns.map(x => [qui(x), esc(x.vers), new Date(x.vu*1000).toLocaleTimeString("fr-FR")]));
+    lignes("appareils", e.appareils.map(x => [(x.nouveau ? '<span class="alerte">nouveau</span> ' : "") + esc(x.nom || "?"), esc(x.ip), esc(x.mac)]), "Aucun bail DHCP");
+    lignes("clients", e.dns.clients.map(x => [qui(x), x.n]));
+    lignes("domaines", e.dns.domaines.map(([d, n]) => [esc(d), n]));
+    lignes("nouveaux", e.dns.nouveaux_domaines.map(([d, t]) => [esc(d), new Date(t*1000).toLocaleTimeString("fr-FR")]));
+    lignes("interfaces", Object.entries(e.interfaces).map(([i, d]) => [esc(i), `↓ ${b(d.rx)}`, `↑ ${b(d.tx)}`]));
+  } catch (err) { document.getElementById("sys").textContent = "Vigie injoignable"; }
+}
+maj(); setInterval(maj, 5000);
+</script>
+</body>
+</html>
