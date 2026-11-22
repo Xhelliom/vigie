@@ -1,8 +1,8 @@
 # Vigie
 
 Petite page d'état pour un routeur NixOS (testée sur un PC Engines APU2) : débit WAN, appareils connectés,
-connexions suivies, requêtes DNS récentes et domaines/IP bloqués. Un démon Python (bibliothèque standard
-seulement, rien à installer) sert une page HTML unique (clair/sombre, rafraîchie toutes les 5 s) sur
+connexions suivies, requêtes DNS récentes et domaines/IP bloqués. Un démon Rust (un seul binaire, page
+HTML embarquée, quelques Mo de mémoire) sert une page HTML unique (clair/sombre, rafraîchie toutes les 5 s) sur
 `http://<routeur>:8080` ; les données brutes sont sur `/api/etat`.
 
 La vigie ne fait aucune authentification : limitez l'accès au port par le pare-feu du routeur.
@@ -47,7 +47,7 @@ root (lecture de conntrack) mais confiné (`ProtectSystem=strict`, `MemoryMax=96
 | `VIGIE_LISTES` | `/var/lib/listes` | dossier des listes de blocage |
 | `VIGIE_JOURNAL_DNS` | `/run/dnsmasq/requetes.log` | journal des requêtes dnsmasq |
 | `VIGIE_BAUX` | `/var/lib/dnsmasq/dnsmasq.leases` | baux DHCP |
-| `VIGIE_PAGE` | `index.html` du paquet | page servie |
+| `VIGIE_PAGE` | page embarquée | fichier HTML servi à la place de la page embarquée |
 | `VIGIE_RESEAUX` | les 4 réseaux privés du module | réseaux locaux, séparés par des espaces |
 | `STATE_DIRECTORY` | `/var/lib/vigie` | dossier d'état (fourni par systemd) |
 

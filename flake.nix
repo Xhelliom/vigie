@@ -9,16 +9,18 @@
       pour = f: nixpkgs.lib.genAttrs systemes (s: f nixpkgs.legacyPackages.${s});
     in
     {
-      # Un script Python (bibliothèque standard seulement) + une page HTML, sans dépendance
+      # Un seul binaire Rust (page HTML embarquée)
       packages = pour (pkgs: {
-        default = pkgs.runCommand "vigie" { } ''
-          mkdir -p $out/bin $out/share/vigie
-          cp ${./index.html} $out/share/vigie/index.html
-          substitute ${./vigie.py} $out/bin/vigie \
-            --replace-fail "@python@" "${pkgs.python3}/bin/python3" \
-            --replace-fail "@share@" "$out/share/vigie"
-          chmod +x $out/bin/vigie
-        '';
+        default = pkgs.rustPlatform.buildRustPackage {
+          pname = "vigie";
+          version = (pkgs.lib.importTOML ./Cargo.toml).package.version;
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [ ./Cargo.toml ./Cargo.lock ./src ./index.html ];
+          };
+          cargoLock.lockFile = ./Cargo.lock;
+          meta.mainProgram = "vigie";
+        };
       });
 
       nixosModules.default = import ./module.nix self;
