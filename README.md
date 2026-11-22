@@ -1,6 +1,6 @@
 # Vigie
 
-Petite page d'état pour un routeur NixOS (testée sur un PC Engines APU2) : débit WAN, appareils connectés,
+Petite page d'état pour un routeur NixOS (testée sur un PC Engines APU2) : débit WAN, réseaux et plages DHCP, appareils en ligne et adresses fixes, latence et services,
 connexions suivies, requêtes DNS récentes et domaines/IP bloqués. Un démon Rust (un seul binaire, page
 HTML embarquée, quelques Mo de mémoire) sert une page HTML unique (clair/sombre, rafraîchie toutes les 5 s) sur
 `http://<routeur>:8080` ; les données brutes sont sur `/api/etat`.
@@ -15,6 +15,9 @@ La vigie ne fait aucune authentification : limitez l'accès au port par le pare-
 - journal dnsmasq `/run/dnsmasq/requetes.log` (`log-queries=extra` ; vidé par la vigie au-delà de 4 Mo)
 - baux DHCP `/var/lib/dnsmasq/dnsmasq.leases`
 - listes de blocage `<listes>/{menaces.hosts,pub.hosts,ip.txt}`
+- `/proc/net/arp` : appareils présents en ce moment, et adresses fixes (présentes sans bail DHCP)
+- `ip -j addr`, `/sys/class/net/*/{operstate,speed}` : réseaux, état et vitesse des liens
+- `ping` (toutes les 30 s) : latence de la passerelle WAN et des cibles `sondes` ; `systemctl is-active` : état des services
 
 ## Utilisation (NixOS)
 
@@ -49,6 +52,9 @@ root (lecture de conntrack) mais confiné (`ProtectSystem=strict`, `MemoryMax=96
 | `VIGIE_BAUX` | `/var/lib/dnsmasq/dnsmasq.leases` | baux DHCP |
 | `VIGIE_PAGE` | page embarquée | fichier HTML servi à la place de la page embarquée |
 | `VIGIE_RESEAUX` | les 4 réseaux privés du module | réseaux locaux, séparés par des espaces |
+| `VIGIE_DHCP` | aucune (le module les déduit de `services.dnsmasq.settings.dhcp-range`) | plages DHCP `nom,début,fin`, séparées par des espaces |
+| `VIGIE_SONDES` | `1.1.1.1` | cibles de ping pour la latence Internet |
+| `VIGIE_SERVICES` | `dnsmasq unbound nftables` | unités systemd surveillées |
 | `STATE_DIRECTORY` | `/var/lib/vigie` | dossier d'état (fourni par systemd) |
 
 ## Licence

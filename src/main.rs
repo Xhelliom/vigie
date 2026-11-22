@@ -33,6 +33,9 @@ struct Config {
     baux: String,
     page: Option<String>,
     locaux: Vec<(u32, u32)>, // (réseau, masque)
+    dhcp: Vec<(String, u32, u32)>, // (nom, début, fin)
+    sondes: Vec<String>,
+    services: Vec<String>,
 }
 
 fn env(nom: &str, defaut: &str) -> String {
@@ -53,7 +56,17 @@ fn cfg() -> &'static Config {
             .split_whitespace()
             .map(|n| cidr(n).unwrap_or_else(|| panic!("VIGIE_RESEAUX invalide : {n}")))
             .collect(),
+        dhcp: env("VIGIE_DHCP", "").split_whitespace().map(|p| plage(p).unwrap_or_else(|| panic!("VIGIE_DHCP invalide : {p}"))).collect(),
+        sondes: env("VIGIE_SONDES", "1.1.1.1").split_whitespace().map(String::from).collect(),
+        services: env("VIGIE_SERVICES", "dnsmasq unbound nftables").split_whitespace().map(String::from).collect(),
     })
+}
+
+/// `nom,début,fin` (nom facultatif) → plage DHCP.
+fn plage(s: &str) -> Option<(String, u32, u32)> {
+    let mut p = s.split(',');
+    let (nom, debut, fin) = (p.next()?, ip_u32(p.next()?)?, ip_u32(p.next()?)?);
+    (debut <= fin).then(|| (nom.into(), debut, fin))
 }
 
 #[derive(Serialize, Deserialize)]
@@ -77,6 +90,8 @@ struct Etat {
     debits_appareils: HashMap<String, f64>,            // ip -> o/s
     domaines_vus: HashMap<String, f64>,                // domaine -> premier ts
     appareils: HashMap<String, Appareil>,              // mac -> appareil
+    latences: Vec<(String, String, Option<f64>)>,      // (nom, cible, ms)
+    services: Vec<(String, String)>,                   // (unité, is-active)
 }
 
 static ETAT: LazyLock<Mutex<Etat>> = LazyLock::new(Default::default);
@@ -372,6 +387,105 @@ fn lire_baux() {
     }
 }
 
+// --- vue infra : voisins, adresses, liens, sondes ---
+fn ip_u32(s: &str) -> Option<u32> {
+    s.parse::<Ipv4Addr>().ok().map(u32::from)
+}
+
+/// `/proc/net/arp` : entrées complètes (flag 0x2) → (ip, mac, interface).
+/// shortcut: une entrée complète reste quelques minutes après la dernière activité ; `ip neigh` (REACHABLE) si besoin de précision.
+fn analyser_arp(texte: &str) -> Vec<(String, String, String)> {
+    texte.lines().skip(1).filter_map(|l| {
+        let p: Vec<&str> = l.split_whitespace().collect();
+        (p.len() >= 6 && p[2] == "0x2" && p[3] != "00:00:00:00:00:00").then(|| (p[0].into(), p[3].to_lowercase(), p[5].into()))
+    }).collect()
+}
+
+/// `/proc/net/route` : passerelle de la route par défaut.
+fn analyser_route(texte: &str) -> Option<String> {
+    texte.lines().skip(1).find_map(|l| {
+        let p: Vec<&str> = l.split_whitespace().collect();
+        (p.len() > 2 && p[1] == "00000000" && p[2] != "00000000")
+            .then(|| u32::from_str_radix(p[2], 16).ok())
+            .flatten()
+            .map(|g| Ipv4Addr::from(u32::from_be(g)).to_string())
+    })
+}
+
+/// Baux dnsmasq en cours : `expiration mac ip nom id` → (mac, ip).
+fn baux_actuels() -> Vec<(String, String)> {
+    fs::read_to_string(&cfg().baux).unwrap_or_default().lines().filter_map(|l| {
+        let p: Vec<&str> = l.split_whitespace().collect();
+        (p.len() >= 3).then(|| (p[1].to_lowercase(), p[2].into()))
+    }).collect()
+}
+
+/// `ip -j -4 addr` → (interface, réseau, masque, adresse).
+fn adresses_interfaces() -> Vec<(String, u32, u32, String)> {
+    let Ok(sortie) = Command::new("ip").args(["-j", "-4", "addr", "show"]).stderr(Stdio::null()).output() else { return vec![] };
+    let v: Value = serde_json::from_slice(&sortie.stdout).unwrap_or(Value::Null);
+    let mut r = vec![];
+    for i in v.as_array().into_iter().flatten() {
+        for a in i["addr_info"].as_array().into_iter().flatten() {
+            if let (Some(nom), Some(ip), Some(p)) = (i["ifname"].as_str(), a["local"].as_str(), a["prefixlen"].as_u64()) {
+                if let Some((res, m)) = cidr(&format!("{ip}/{p}")) {
+                    r.push((nom.into(), res, m, ip.into()));
+                }
+            }
+        }
+    }
+    r
+}
+
+/// `time=1.23 ms` dans la sortie de ping.
+fn analyser_ping(sortie: &str) -> Option<f64> {
+    let t = &sortie[sortie.find("time=")? + 5..];
+    t.split(|c: char| c != '.' && !c.is_ascii_digit()).next()?.parse().ok()
+}
+
+fn ping(cible: &str) -> Option<f64> {
+    let s = Command::new("ping").env("LC_ALL", "C").args(["-n", "-c1", "-W1", cible]).stderr(Stdio::null()).output().ok()?;
+    analyser_ping(&String::from_utf8_lossy(&s.stdout))
+}
+
+/// Toutes les 30 s : latences (passerelle WAN + cibles configurées) et état des services.
+fn sondes() {
+    loop {
+        let passerelle = analyser_route(&fs::read_to_string("/proc/net/route").unwrap_or_default());
+        let mut latences = vec![];
+        if let Some(g) = passerelle {
+            latences.push(("Passerelle".to_string(), g.clone(), ping(&g)));
+        }
+        for c in &cfg().sondes {
+            latences.push(("Internet".to_string(), c.clone(), ping(c)));
+        }
+        let etats = Command::new("systemctl").arg("is-active").args(&cfg().services).stderr(Stdio::null()).output()
+            .map(|s| String::from_utf8_lossy(&s.stdout).lines().map(String::from).collect::<Vec<_>>())
+            .unwrap_or_default();
+        let services = cfg().services.iter().enumerate()
+            .map(|(i, s)| (s.clone(), etats.get(i).cloned().unwrap_or_else(|| "inconnu".into())))
+            .collect();
+        {
+            let mut e = verrou();
+            e.latences = latences;
+            e.services = services;
+        }
+        thread::sleep(Duration::from_secs(30));
+    }
+}
+
+fn lien(nom: &str, rx: f64, tx: f64) -> Value {
+    let lire = |f: &str| fs::read_to_string(format!("/sys/class/net/{nom}/{f}")).ok().map(|s| s.trim().to_string());
+    let stat = |f: &str| lire_u64(&format!("/sys/class/net/{nom}/statistics/{f}")).unwrap_or(0);
+    json!({
+        "rx": rx, "tx": tx,
+        "etat": lire("operstate"),
+        "vitesse": lire("speed").and_then(|v| v.parse::<i64>().ok()).filter(|&v| v > 0),
+        "erreurs": stat("rx_errors") + stat("tx_errors"),
+        "pertes": stat("rx_dropped") + stat("tx_dropped"),
+    })
+}
+
 // --- état publié ---
 fn vnstat_wan() -> Value {
     let mut enfant = match Command::new("vnstat")
@@ -474,6 +588,28 @@ fn plus_frequents<K: Hash + Eq + Copy>(cles: impl Iterator<Item = K>, n: usize) 
 fn etat() -> Value {
     let t = maintenant();
     let (systeme, historique_wan) = (systeme(), vnstat_wan());
+    let arp: Vec<_> = analyser_arp(&fs::read_to_string("/proc/net/arp").unwrap_or_default())
+        .into_iter().filter(|v| local(&v.0)).collect();
+    let (baux, adresses) = (baux_actuels(), adresses_interfaces());
+    let en_ligne = |mac: &str| arp.iter().any(|v| v.1 == mac);
+    let ip_fixes: Vec<_> = arp.iter().filter(|v| !baux.iter().any(|b| b.0 == v.1)).collect();
+    let dans = |ip: &str, r: u32, m: u32| ip_u32(ip).is_some_and(|a| a & m == r);
+    let reseaux: Vec<Value> = cfg().locaux.iter().map(|&(r, m)| {
+        let interface = adresses.iter().find(|a| a.1 == r && a.2 == m);
+        let p = cfg().dhcp.iter().find(|p| p.1 & m == r);
+        json!({
+            "cidr": format!("{}/{}", Ipv4Addr::from(r), m.count_ones()),
+            "nom": p.map(|p| p.0.as_str()).filter(|n| !n.is_empty()).or(interface.map(|a| a.0.as_str())),
+            "interface": interface.map(|a| &a.0),
+            "adresse": interface.map(|a| &a.3),
+            "plage": p.map(|p| json!({"debut": Ipv4Addr::from(p.1).to_string(), "fin": Ipv4Addr::from(p.2).to_string(), "taille": p.2 - p.1 + 1})),
+            "baux": baux.iter().filter(|b| dans(&b.1, r, m)).count(),
+            "en_ligne": arp.iter().filter(|v| dans(&v.0, r, m)).count(),
+            "ip_fixes": ip_fixes.iter().filter(|v| dans(&v.0, r, m)).count(),
+        })
+    }).collect();
+    let listes_maj = fs::metadata(Path::new(&cfg().listes).join("menaces.hosts")).and_then(|m| m.modified()).ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs_f64());
     let guard = verrou();
     let e = &*guard;
     let noms: HashMap<&str, Option<&str>> =
@@ -492,12 +628,20 @@ fn etat() -> Value {
     json!({
         "maintenant": t,
         "systeme": systeme,
-        "interfaces": e.debits_if.iter().map(|(i, &(rx, tx))| (i, json!({"rx": rx, "tx": tx}))).collect::<BTreeMap<_, _>>(),
+        "interfaces": e.debits_if.iter().map(|(i, &(rx, tx))| (i, lien(i, rx, tx))).collect::<BTreeMap<_, _>>(),
         "wan": cfg().wan,
         "historique_wan": historique_wan,
         "appareils": appareils.iter().map(|(m, a, nouveau)| json!({
             "mac": m, "premier": a.premier, "ip": a.ip, "nom": a.nom, "vu": a.vu, "nouveau": nouveau,
+            "en_ligne": en_ligne(&m.to_lowercase()), "bail": baux.iter().any(|b| b.0 == m.to_lowercase()),
         })).collect::<Vec<_>>(),
+        "reseaux": reseaux,
+        "ip_fixes": ip_fixes.iter().map(|(ip, mac, dev)| json!({"ip": ip, "mac": mac, "interface": dev})).collect::<Vec<_>>(),
+        "sante": {
+            "latences": e.latences.iter().map(|(n, c, ms)| json!({"nom": n, "cible": c, "ms": ms})).collect::<Vec<_>>(),
+            "services": e.services.iter().map(|(n, s)| json!({"nom": n, "etat": s})).collect::<Vec<_>>(),
+            "listes_maj": listes_maj,
+        },
         "gros_consommateurs": conso.iter().take(10).map(|(ip, d)| json!({"ip": ip, "nom": nom(ip), "debit": d})).collect::<Vec<_>>(),
         "dns": {
             "requetes_24h": e.requetes.len(),
@@ -560,6 +704,7 @@ fn main() {
     fs::create_dir_all(&c.etat).expect("dossier d'état");
     charger_etat();
     thread::spawn(boucle);
+    thread::spawn(sondes);
     let ecoute = TcpListener::bind(&c.ecoute).unwrap_or_else(|e| panic!("écoute sur {} impossible : {e}", c.ecoute));
     for flux in ecoute.incoming().flatten() {
         thread::spawn(move || servir(flux));
@@ -598,6 +743,20 @@ mod tests {
         assert!(local("192.168.1.42") && local("10.99.99.7") && !local("8.8.8.8") && !local("pas une ip"));
         assert!(public("93.184.216.34") && !public("192.168.1.1") && !public("100.64.0.1") && !public("127.0.0.1"));
         assert_eq!(cidr("10.20.0.0/24"), Some((0x0a14_0000, 0xffff_ff00)));
+    }
+
+    #[test]
+    fn infra() {
+        let arp = "IP address       HW type     Flags       HW address            Mask     Device\n\
+                   192.168.1.10     0x1         0x2         AA:BB:CC:00:11:23     *        enp2s0\n\
+                   192.168.1.77     0x1         0x0         00:00:00:00:00:00     *        enp2s0\n";
+        assert_eq!(analyser_arp(arp), vec![("192.168.1.10".into(), "aa:bb:cc:00:11:23".into(), "enp2s0".into())]);
+        let route = "Iface\tDestination\tGateway \tFlags\n enp1s0\t00000000\t01FEA8C0\t0003\n enp2s0\t0001A8C0\t00000000\t0001\n";
+        assert_eq!(analyser_route(route).as_deref(), Some("192.168.254.1"));
+        assert_eq!(analyser_ping("64 bytes from 1.1.1.1: icmp_seq=1 ttl=58 time=12.4 ms"), Some(12.4));
+        assert_eq!(analyser_ping("1 packets transmitted, 0 received"), None);
+        assert_eq!(plage("principal,192.168.1.60,192.168.1.98"), Some(("principal".into(), 0xc0a8_013c, 0xc0a8_0162)));
+        assert_eq!(plage(",10.0.0.9,10.0.0.1"), None);
     }
 
     #[test]

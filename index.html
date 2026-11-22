@@ -5,60 +5,325 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vigie</title>
 <style>
-  :root { --fond:#f6f7f5; --carte:#fff; --texte:#1d2320; --doux:#66706a; --accent:#2f6b4f; --alerte:#b3401f; --ligne:#e3e6e2; }
-  @media (prefers-color-scheme: dark) { :root { --fond:#141816; --carte:#1d2320; --texte:#e7ebe8; --doux:#98a39c; --accent:#7cc4a0; --alerte:#f08a68; --ligne:#2c332f; } }
-  * { box-sizing: border-box; }
-  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--fond); color:var(--texte); }
-  header { padding:16px; display:flex; flex-wrap:wrap; gap:8px 24px; align-items:baseline; }
-  h1 { margin:0; font-size:20px; } h2 { margin:0 0 8px; font-size:15px; color:var(--accent); }
-  .doux { color:var(--doux); } .alerte { color:var(--alerte); font-weight:600; }
-  main { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:12px; padding:0 16px 16px; }
-  section { background:var(--carte); border:1px solid var(--ligne); border-radius:10px; padding:12px; overflow:hidden; }
-  table { width:100%; border-collapse:collapse; } td { padding:3px 4px; border-top:1px solid var(--ligne); vertical-align:top; overflow-wrap:anywhere; }
-  td.n { text-align:right; white-space:nowrap; word-break:normal; }
-  .grand { font-size:22px; font-weight:600; }
+  :root {
+    --fond:#eceeed; --surface:#fff; --texte:#16201f; --doux:#6b7674; --filet:rgba(22,32,31,.08);
+    --mer:#1f6f6a; --feu:#d9822b; --alerte:#c2410c;
+    --ombre:0 1px 2px rgba(20,40,38,.05), 0 10px 28px -14px rgba(20,40,38,.22);
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --fond:#0e1515; --surface:#162020; --texte:#e6eeec; --doux:#8fa09d; --filet:rgba(255,255,255,.07);
+    --mer:#5cc2b8; --feu:#f0a34a; --alerte:#ff8a65;
+    --ombre:inset 0 1px 0 rgba(255,255,255,.04), 0 12px 30px -16px rgba(0,0,0,.6);
+  } }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-variant-numeric:tabular-nums; font-optical-sizing:auto; background:var(--fond); color:var(--texte); -webkit-font-smoothing:antialiased; }
+  .doux { color:var(--doux); }
+  a { color:inherit; }
+  :focus-visible { outline:2px solid var(--mer); outline-offset:3px; border-radius:6px; }
+
+  /* En-tête translucide : le contenu défile dessous */
+  header { position:sticky; top:0; z-index:2; display:flex; justify-content:space-between; align-items:center; gap:16px;
+    padding:14px clamp(16px,4vw,40px); background:color-mix(in srgb, var(--fond) 72%, transparent);
+    backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%); }
+  h1 { margin:0; font-size:24px; font-weight:700; letter-spacing:-.035em; line-height:1; }
+  h1 small { display:block; margin-top:4px; font-size:13px; font-weight:450; letter-spacing:0; color:var(--doux); }
+
+  /* Le feu de vigie : seul élément animé, et seulement quand il y a quelque chose à voir */
+  .phare { display:flex; align-items:center; gap:12px; text-align:right; }
+  .phare strong { display:block; font-size:15px; font-weight:600; letter-spacing:-.01em; }
+  .phare small { display:block; font-size:12.5px; color:var(--doux); }
+  .phare i { position:relative; order:2; width:12px; height:12px; border-radius:50%; background:var(--doux); flex:none; }
+  .phare.calme i { background:var(--mer); box-shadow:0 0 0 4px color-mix(in srgb, var(--mer) 18%, transparent); }
+  .phare.attention i { background:var(--feu); box-shadow:0 0 0 4px color-mix(in srgb, var(--feu) 22%, transparent), 0 0 18px var(--feu); }
+  .phare.attention i::after { content:""; position:absolute; inset:0; border-radius:50%; background:var(--feu); animation:halo 2.4s ease-out infinite; }
+  @keyframes halo { from { transform:scale(1); opacity:.6; } to { transform:scale(3.2); opacity:0; } }
+
+  #points { display:flex; flex-wrap:wrap; gap:8px; padding:4px clamp(16px,4vw,40px) 0; }
+  #points:empty { display:none; }
+  .puce { display:inline-flex; align-items:center; gap:8px; padding:7px 14px; border-radius:999px; text-decoration:none; font-weight:500;
+    background:color-mix(in srgb, var(--feu) 16%, var(--surface)); transition:transform .1s ease-out; }
+  .puce::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--feu); }
+  .puce:active { transform:scale(.97); }
+
+  .contenu { padding:16px clamp(16px,4vw,40px) 24px; }
+  .pan { background:var(--surface); border-radius:18px; box-shadow:var(--ombre); padding:16px 18px 10px; }
+
+  /* Héros : le débit Internet, en grand, avec sa trace des 5 dernières minutes */
+  .hero { display:grid; grid-template-columns:minmax(0,auto) minmax(0,1fr); gap:8px 40px; align-items:end; padding:22px 24px 18px; margin-bottom:16px; }
+  .debits { display:flex; flex-direction:column; gap:14px; }
+  .debit span { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--doux); }
+  .debit span::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--mer); }
+  .debit.tx span::before { background:var(--doux); }
+  .debit b { display:block; font-size:clamp(36px,6vw,58px); font-weight:620; letter-spacing:-.04em; line-height:1; }
+  .debit b small { font-size:.36em; font-weight:500; letter-spacing:0; color:var(--doux); margin-left:4px; }
+  .trace { display:flex; flex-direction:column; height:170px; }
+  .trace svg { flex:1; width:100%; min-height:0; display:block; overflow:visible; }
+  .trace figcaption { text-align:right; margin-bottom:6px; font-size:12.5px; color:var(--doux); }
+  #base { stroke:var(--filet); stroke-width:1; vector-effect:non-scaling-stroke; }
+  #ligne-rx { fill:none; stroke:var(--mer); stroke-width:2; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+  #ligne-tx { fill:none; stroke:var(--doux); stroke-width:1.25; vector-effect:non-scaling-stroke; stroke-linejoin:round; opacity:.8; }
+  #cumul { grid-column:1 / -1; margin:6px 0 0; font-size:13px; color:var(--doux); }
+
+  /* colonnes plutôt que grille : les panneaux de hauteurs différentes s'empilent sans trous */
+  main { columns:340px; column-gap:16px; }
+  main .pan { break-inside:avoid; margin-bottom:16px; }
+  h2 { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:0; font-size:16px; font-weight:650; letter-spacing:-.015em; }
+  h2 span { font-size:13px; font-weight:450; letter-spacing:0; color:var(--doux); }
+  .pan > p { margin:2px 0 4px; font-size:13px; color:var(--doux); }
+  ul { list-style:none; margin:8px 0 0; padding:0; }
+  li { position:relative; display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:9px 0; }
+  li + li { border-top:1px solid var(--filet); }
+  li .p { min-width:0; overflow-wrap:anywhere; }
+  li small { display:block; font-size:12.5px; color:var(--doux); overflow-wrap:normal; }
+  li small span + span { margin-left:10px; }
+  li .v { white-space:nowrap; font-weight:500; }
+  li.vide { color:var(--doux); }
+  li.barre::after { content:""; position:absolute; left:0; bottom:-1px; height:2px; border-radius:2px; width:calc(var(--f) * 100%); background:var(--mer); opacity:.5; }
+  .menace { color:var(--alerte); font-weight:600; }
+  .tag { padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; color:var(--texte); background:color-mix(in srgb, var(--feu) 20%, var(--surface)); }
+
+  /* Infrastructure : santé du routeur puis une carte par réseau local */
+  .infra { margin-bottom:16px; }
+  section, #sante, #reseaux { scroll-margin-top:96px; }
+  .sante { display:flex; flex-wrap:wrap; gap:8px 24px; margin:12px 0 16px; }
+  .indic { display:flex; align-items:center; gap:8px; }
+  .indic span { color:var(--doux); }
+  .pt { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--doux); flex:none; }
+  .pt.ok { background:var(--mer); } .pt.ko { background:var(--feu); }
+  li .p > .pt { margin-right:9px; vertical-align:1px; }
+  .reseaux { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px; margin-bottom:8px; }
+  .res { padding:14px 16px; border-radius:14px; background:color-mix(in srgb, var(--fond) 55%, var(--surface)); }
+  .res h3 { display:flex; justify-content:space-between; align-items:center; margin:0; font-size:16px; font-weight:650; letter-spacing:-.015em; }
+  .res p { margin:2px 0 0; font-size:13px; color:var(--doux); }
+  .chiffres { display:flex; gap:22px; margin-top:12px; }
+  .chiffres b { display:block; font-size:22px; font-weight:620; letter-spacing:-.03em; line-height:1.1; }
+  .chiffres span { font-size:12.5px; color:var(--doux); }
+  .jauge { height:6px; border-radius:3px; background:var(--filet); margin:12px 0 4px; overflow:hidden; }
+  .jauge i { display:block; height:100%; width:calc(var(--f) * 100%); background:var(--mer); border-radius:3px; }
+  .jauge.pleine i { background:var(--feu); }
+
+  footer { padding:0 clamp(16px,4vw,40px) 32px; font-size:13px; color:var(--doux); }
+  footer p { margin:0 0 2px; }
+
+  body.perime .contenu { filter:grayscale(1); opacity:.5; transition:opacity .3s, filter .3s; }
+
+  @media (max-width:640px) {
+    .hero { grid-template-columns:1fr; padding:18px; }
+    .debits { flex-direction:row; gap:28px; }
+    .trace { height:130px; }
+    .phare small { display:none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .phare.attention i::after { animation:none; } .puce { transition:none; } }
+  @media (prefers-reduced-transparency: reduce) { header { background:var(--fond); backdrop-filter:none; -webkit-backdrop-filter:none; } }
+  /* Variante glossy : verre sur fond coloré, reflets en haut des surfaces */
+  :root { --verre:rgba(255,255,255,.46); --bord:rgba(255,255,255,.8); --haut:rgba(255,255,255,.95);
+    --reflet:linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,0) 38%); }
+  @media (prefers-color-scheme: dark) { :root { --verre:rgba(24,36,36,.44); --bord:rgba(255,255,255,.09); --haut:rgba(255,255,255,.14);
+    --reflet:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%); } }
+  /* Fond : trois halos très flous qui dérivent lentement derrière le verre */
+  .halos { position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none; }
+  .halos i { position:absolute; width:55vmax; height:55vmax; border-radius:50%; filter:blur(80px); will-change:transform; }
+  .halos i:nth-child(1) { top:-22vmax; left:-14vmax; background:var(--mer); opacity:.48; animation:derive1 48s ease-in-out infinite alternate; }
+  .halos i:nth-child(2) { top:8vh; right:-22vmax; background:var(--feu); opacity:.32; animation:derive2 62s ease-in-out infinite alternate; }
+  .halos i:nth-child(3) { bottom:-26vmax; left:22vw; background:color-mix(in srgb, var(--mer) 55%, #6f9cff); opacity:.38; animation:derive3 55s ease-in-out infinite alternate; }
+  @media (prefers-color-scheme: dark) { .halos i:nth-child(1) { opacity:.34; } .halos i:nth-child(2) { opacity:.20; } .halos i:nth-child(3) { opacity:.26; } }
+  @keyframes derive1 { to { transform:translate(26vw, 20vh) scale(1.2); } }
+  @keyframes derive2 { to { transform:translate(-30vw, 26vh) scale(.85); } }
+  @keyframes derive3 { to { transform:translate(-24vw, -22vh) scale(1.15); } }
+  .pan { background:var(--reflet), var(--verre); border:1px solid var(--bord);
+    backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
+    box-shadow:inset 0 1px 0 var(--haut), 0 1px 2px rgba(20,40,38,.06), 0 22px 44px -22px rgba(20,40,38,.38); }
+  .res { background:linear-gradient(180deg, color-mix(in srgb, var(--surface) 70%, transparent), color-mix(in srgb, var(--surface) 30%, transparent));
+    border:1px solid var(--bord); box-shadow:inset 0 1px 0 var(--haut), 0 8px 18px -14px rgba(20,40,38,.35); }
+
+  /* le feu : une perle avec son reflet */
+  .phare i { width:14px; height:14px; }
+  .phare.calme i { background:radial-gradient(circle at 34% 30%, #fff 0 10%, color-mix(in srgb, var(--mer) 55%, #fff) 24%, var(--mer) 62%, color-mix(in srgb, var(--mer) 65%, #000) 100%); }
+  .phare.attention i { background:radial-gradient(circle at 34% 30%, #fff 0 10%, color-mix(in srgb, var(--feu) 55%, #fff) 24%, var(--feu) 62%, color-mix(in srgb, var(--feu) 65%, #000) 100%); }
+  .pt.ok { background:radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--mer) 40%, #fff), var(--mer) 70%); box-shadow:0 0 6px color-mix(in srgb, var(--mer) 50%, transparent); }
+  .pt.ko { background:radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--feu) 40%, #fff), var(--feu) 70%); box-shadow:0 0 6px color-mix(in srgb, var(--feu) 55%, transparent); }
+
+  .puce, .tag { background:linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.12)), color-mix(in srgb, var(--feu) 22%, transparent);
+    border:1px solid var(--bord); box-shadow:inset 0 1px 0 var(--haut), 0 4px 12px -6px color-mix(in srgb, var(--feu) 60%, transparent);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
+  @media (prefers-color-scheme: dark) { .puce, .tag { background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0)), color-mix(in srgb, var(--feu) 22%, transparent); } }
+
+  .debit b { background:linear-gradient(180deg, var(--texte) 45%, color-mix(in srgb, var(--texte) 50%, var(--mer)));
+    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .debit b small { -webkit-text-fill-color:var(--doux); }
+
+  .jauge { height:8px; border-radius:4px; box-shadow:inset 0 1px 2px rgba(0,0,0,.12); }
+  .jauge i { border-radius:4px; background:linear-gradient(180deg, color-mix(in srgb, var(--mer) 50%, #fff), var(--mer) 60%); box-shadow:inset 0 1px 0 rgba(255,255,255,.5); }
+  .jauge.pleine i { background:linear-gradient(180deg, color-mix(in srgb, var(--feu) 50%, #fff), var(--feu) 60%); }
+  li.barre::after { opacity:.9; background:linear-gradient(90deg, var(--mer), color-mix(in srgb, var(--mer) 15%, transparent)); }
+
+  @media (prefers-reduced-motion: reduce) { .halos i { animation:none; } }
+  @media (prefers-reduced-transparency: reduce) {
+    .halos { display:none; }
+    .pan, .puce, .tag { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--surface); }
+  }
 </style>
 </head>
 <body>
-<header><h1>Vigie — routeur</h1><span id="sys" class="doux"></span></header>
-<main>
-  <section><h2>Internet</h2><div id="wan"></div></section>
-  <section><h2>Gros consommateurs (maintenant)</h2><table id="conso"></table></section>
-  <section><h2>Domaines malveillants bloqués (24 h)</h2><table id="menaces"></table></section>
-  <section><h2>Connexions sans DNS (24 h)</h2><p class="doux">Vers une IP jamais annoncée par le DNS : souvent normal (applis, jeux), à surveiller pour les objets connectés.</p><table id="sansdns"></table></section>
-  <section><h2>Appareils</h2><table id="appareils"></table></section>
-  <section><h2>DNS : qui interroge (24 h)</h2><table id="clients"></table></section>
-  <section><h2>DNS : domaines les plus demandés (24 h)</h2><table id="domaines"></table></section>
-  <section><h2>Nouveaux domaines (24 h)</h2><table id="nouveaux"></table></section>
-  <section><h2>Interfaces</h2><table id="interfaces"></table></section>
-</main>
+<div class="halos" aria-hidden="true"><i></i><i></i><i></i></div>
+<header>
+  <h1>Vigie<small>Routeur de la maison</small></h1>
+  <div id="phare" class="phare" role="status"><i aria-hidden="true"></i><div><strong id="etat">Connexion…</strong><small id="maj"></small></div></div>
+</header>
+<nav id="points" aria-label="Points à regarder"></nav>
+
+<div class="contenu">
+  <section class="pan hero" aria-label="Internet">
+    <div class="debits">
+      <div class="debit"><span>Réception</span><b id="rx">–</b></div>
+      <div class="debit tx"><span>Émission</span><b id="tx">–</b></div>
+    </div>
+    <figure class="trace" style="margin:0">
+      <figcaption id="legende">5 dernières minutes</figcaption>
+      <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="degrade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color:var(--mer);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--mer);stop-opacity:0"/>
+        </linearGradient></defs>
+        <path id="base" d="M0,150L600,150"/><path id="aire" fill="url(#degrade)"/><path id="ligne-rx"/><path id="ligne-tx"/>
+      </svg>
+    </figure>
+    <p id="cumul"></p>
+  </section>
+
+  <section class="pan infra" aria-label="Infrastructure">
+    <h2>Infrastructure <span id="lien-wan"></span></h2>
+    <div class="sante" id="sante"></div>
+    <div class="reseaux" id="reseaux"></div>
+  </section>
+
+  <main>
+    <section class="pan" id="s-menaces"><h2>Domaines malveillants bloqués <span>24 h</span></h2><ul id="menaces"></ul></section>
+    <section class="pan" id="s-appareils"><h2>Appareils <span id="n-appareils"></span></h2><p>Point vert : présent sur le réseau en ce moment. « Nouveau » : vu pour la première fois il y a moins de 7 jours.</p><ul id="appareils"></ul></section>
+    <section class="pan" id="s-fixes"><h2>Adresses fixes <span id="n-fixes"></span></h2><p>Présentes sur le réseau sans bail DHCP : l'adresse est réglée à la main sur l'appareil.</p><ul id="fixes"></ul></section>
+    <section class="pan"><h2>Connexions sans DNS <span>24 h</span></h2><p>Vers une IP jamais annoncée par le DNS : souvent normal (applis, jeux), à surveiller pour les objets connectés.</p><ul id="sansdns"></ul></section>
+    <section class="pan"><h2>Gros consommateurs <span>maintenant</span></h2><ul id="conso"></ul></section>
+    <section class="pan"><h2>Pubs bloquées <span>24 h</span></h2><ul id="pub"></ul></section>
+    <section class="pan"><h2>Qui interroge le DNS <span id="total-dns"></span></h2><ul id="clients"></ul></section>
+    <section class="pan"><h2>Domaines les plus demandés <span>24 h</span></h2><ul id="domaines"></ul></section>
+    <section class="pan"><h2>Nouveaux domaines <span>24 h</span></h2><ul id="nouveaux"></ul></section>
+    <section class="pan"><h2>Liens</h2><ul id="interfaces"></ul></section>
+  </main>
+</div>
+
+<footer><p id="sys"></p><p id="listes"></p></footer>
+
 <script>
-const o = n => n == null ? "–" : n < 1024 ? n.toFixed(0)+" o" : n < 1048576 ? (n/1024).toFixed(1)+" Kio" : n < 1073741824 ? (n/1048576).toFixed(1)+" Mio" : (n/1073741824).toFixed(2)+" Gio";
-const b = n => n == null ? "–" : (n*8/1e6).toFixed(n*8 < 1e6 ? 2 : 1)+" Mb/s";
+const $ = id => document.getElementById(id);
+const fr = (n, d=0) => n.toLocaleString("fr-FR", {minimumFractionDigits:d, maximumFractionDigits:d});
+const nb = n => n == null ? "–" : fr(n);
+const pl = (n, un, plusieurs) => `${fr(n)} ${n > 1 ? plusieurs : un}`;
+const o = n => n == null ? "–" : n < 1024 ? fr(n)+" o" : n < 1048576 ? fr(n/1024,1)+" Kio" : n < 1073741824 ? fr(n/1048576,1)+" Mio" : fr(n/1073741824,2)+" Gio";
+const bp = n => n == null ? ["–", ""] : n*8 < 1e6 ? [fr(n*8/1e3), "kb/s"] : [fr(n*8/1e6,1), "Mb/s"];
+const b = n => bp(n).join(" ");
+const heure = t => new Date(t*1000).toLocaleTimeString("fr-FR");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const qui = x => esc(x.nom || x.ip);
-const lignes = (id, rows, vide="Rien à signaler") => document.getElementById(id).innerHTML =
-  rows.length ? rows.map(r => "<tr>"+r.map((c,i) => `<td${i==r.length-1?' class="n"':''}>${c}</td>`).join("")+"</tr>").join("") : `<tr><td class="doux">${vide}</td></tr>`;
+// r = {a: texte principal, sous: ligne secondaire, v: valeur à droite, f: part 0..1 pour la barre}
+const liste = (id, rows, vide="Rien à signaler") => $(id).innerHTML = rows.length
+  ? rows.map(r => `<li${r.f != null ? ` class="barre" style="--f:${r.f.toFixed(3)}"` : ""}><div class="p">${r.a}${r.sous ? `<small>${r.sous}</small>` : ""}</div><span class="v">${r.v ?? ""}</span></li>`).join("")
+  : `<li class="vide">${vide}</li>`;
+const part = (xs, cle) => { const m = Math.max(1, ...xs.map(cle)); return x => cle(x) / m; };
+
+const hist = [], N = 60; // 60 × 5 s = 5 min
+function tracer() {
+  if (hist.length < 2) return;
+  const m = Math.max(1, ...hist.flatMap(h => [h.rx, h.tx])), x = i => (i * 600 / (N - 1)).toFixed(1), y = v => (150 - v / m * 140).toFixed(1);
+  const dep = N - hist.length, ligne = k => hist.map((h, i) => `${i ? "L" : "M"}${x(dep + i)},${y(h[k])}`).join("");
+  $("ligne-rx").setAttribute("d", ligne("rx"));
+  $("ligne-tx").setAttribute("d", ligne("tx"));
+  $("aire").setAttribute("d", `${ligne("rx")}L${x(N - 1)},150L${x(dep)},150Z`);
+  $("legende").textContent = `5 dernières minutes, pic ${b(m)}`;
+}
+
+let derniere = null;
 async function maj() {
   try {
     const e = await (await fetch("api/etat")).json(), s = e.systeme, w = e.interfaces[e.wan] || {};
-    document.getElementById("sys").textContent =
-      `en marche depuis ${(s.uptime/86400).toFixed(1)} j · charge ${s.charge[0].toFixed(2)} · mémoire libre ${o(s.memoire.dispo)} / ${o(s.memoire.totale)}`
-      + (s.temperature ? ` · ${s.temperature.toFixed(0)} °C` : "")
-      + ` · listes : ${s.listes.menaces} domaines malveillants, ${s.listes.pub} pub, ${s.listes.ip} IP`;
+
+    const menaces = e.dns.menaces, nouveaux = e.appareils.filter(x => x.nouveau), points = [];
+    if (menaces.length) points.push(`<a class="puce" href="#s-menaces">${pl(new Set(menaces.map(x => x.ip)).size, "appareil a", "appareils ont")} contacté ${pl(new Set(menaces.map(x => x.domaine)).size, "domaine malveillant", "domaines malveillants")}</a>`);
+    if (nouveaux.length) points.push(`<a class="puce" href="#s-appareils">${pl(nouveaux.length, "nouvel appareil", "nouveaux appareils")} cette semaine</a>`);
+    const sante = e.sante;
+    const enPanne = sante.services.filter(x => x.etat !== "active");
+    if (enPanne.length) points.push(`<a class="puce" href="#sante">${enPanne.map(x => esc(x.nom)).join(", ")} ${enPanne.length > 1 ? "ne tournent pas" : "ne tourne pas"}</a>`);
+    const net = sante.latences.filter(x => x.nom === "Internet");
+    if (net.length && net.every(x => x.ms == null)) points.push(`<a class="puce" href="#sante">Internet ne répond pas au ping</a>`);
+    for (const r of e.reseaux) if (r.plage && r.baux / r.plage.taille >= .9)
+      points.push(`<a class="puce" href="#reseaux">Plage DHCP ${esc(r.nom)} presque pleine</a>`);
+    $("phare").className = "phare " + (points.length ? "attention" : "calme");
+    $("etat").textContent = points.length ? `${pl(points.length, "point", "points")} à regarder` : "Tout est calme";
+    $("points").innerHTML = points.join("");
+
+    const [rx, urx] = bp(w.rx), [tx, utx] = bp(w.tx);
+    $("rx").innerHTML = `${rx}<small>${urx}</small>`;
+    $("tx").innerHTML = `${tx}<small>${utx}</small>`;
+    hist.push({rx: w.rx || 0, tx: w.tx || 0}); if (hist.length > N) hist.shift();
+    tracer();
     const h = e.historique_wan;
-    document.getElementById("wan").innerHTML =
-      `<div class="grand">↓ ${b(w.rx)} · ↑ ${b(w.tx)}</div>` +
-      (h ? `<div class="doux">Aujourd'hui : ↓ ${o(h.jour.rx)} ↑ ${o(h.jour.tx)} · Ce mois : ↓ ${o(h.mois.rx)} ↑ ${o(h.mois.tx)}</div>` : "");
-    lignes("conso", e.gros_consommateurs.map(x => [qui(x), b(x.debit)]), "Calme");
-    lignes("menaces", e.dns.menaces.map(x => [`<span class="alerte">${esc(x.domaine)}</span>`, qui(x), x.n]));
-    lignes("sansdns", e.sans_dns.map(x => [qui(x), esc(x.vers), new Date(x.vu*1000).toLocaleTimeString("fr-FR")]));
-    lignes("appareils", e.appareils.map(x => [(x.nouveau ? '<span class="alerte">nouveau</span> ' : "") + esc(x.nom || "?"), esc(x.ip), esc(x.mac)]), "Aucun bail DHCP");
-    lignes("clients", e.dns.clients.map(x => [qui(x), x.n]));
-    lignes("domaines", e.dns.domaines.map(([d, n]) => [esc(d), n]));
-    lignes("nouveaux", e.dns.nouveaux_domaines.map(([d, t]) => [esc(d), new Date(t*1000).toLocaleTimeString("fr-FR")]));
-    lignes("interfaces", Object.entries(e.interfaces).map(([i, d]) => [esc(i), `↓ ${b(d.rx)}`, `↑ ${b(d.tx)}`]));
-  } catch (err) { document.getElementById("sys").textContent = "Vigie injoignable"; }
+    $("cumul").textContent = h ? `Aujourd'hui ${o(h.jour.rx)} reçus et ${o(h.jour.tx)} envoyés. Ce mois-ci ${o(h.mois.rx)} reçus et ${o(h.mois.tx)} envoyés.` : "";
+
+    const lien = i => e.interfaces[i] || {};
+    const vitesse = v => v == null ? "" : v >= 1000 ? `${fr(v/1000)} Gb/s` : `${fr(v)} Mb/s`;
+    const w0 = lien(e.wan);
+    $("lien-wan").textContent = `WAN ${e.wan} ${w0.etat === "up" ? "connecté" : "coupé"}${w0.vitesse ? " à " + vitesse(w0.vitesse) : ""}`;
+    const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
+    $("sante").innerHTML = [
+      ...sante.latences.map(x => `<div class="indic"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${esc(x.nom)} <span>${x.ms == null ? "sans réponse" : fr(x.ms, x.ms < 10 ? 1 : 0) + " ms"}</span></div>`),
+      ...sante.services.map(x => `<div class="indic"><i class="pt ${x.etat === "active" ? "ok" : "ko"}"></i>${esc(x.nom)} <span>${x.etat === "active" ? "actif" : esc(x.etat)}</span></div>`),
+      age == null ? "" : `<div class="indic"><i class="pt ${age < 48 ? "ok" : "ko"}"></i>Listes <span>mises à jour il y a ${age < 1 ? "moins d'une heure" : age < 48 ? fr(age) + " h" : fr(age / 24) + " j"}</span></div>`,
+    ].join("");
+    $("reseaux").innerHTML = e.reseaux.map(r => {
+      const l = lien(r.interface), f = r.plage ? r.baux / r.plage.taille : 0;
+      return `<div class="res"><h3>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : "ko"}" title="${esc(l.etat || "inconnu")}"></i></h3>
+        <p>${esc(r.cidr)}${r.interface ? ` sur ${esc(r.interface)}` : ""}${l.vitesse ? `, ${vitesse(l.vitesse)}` : ""}</p>
+        <div class="chiffres"><div><b>${fr(r.en_ligne)}</b><span>en ligne</span></div><div><b>${fr(r.baux)}</b><span>${r.baux > 1 ? "baux" : "bail"}</span></div><div><b>${fr(r.ip_fixes)}</b><span>${r.ip_fixes > 1 ? "IP fixes" : "IP fixe"}</span></div></div>
+        ${r.plage ? `<div class="jauge${f >= .9 ? " pleine" : ""}" style="--f:${Math.min(f, 1).toFixed(3)}"><i></i></div><p>DHCP de ${esc(r.plage.debut)} à ${esc(r.plage.fin)}, ${fr(Math.round(f * 100))} % occupé</p>` : "<p>Pas de plage DHCP</p>"}
+      </div>`;
+    }).join("");
+
+    liste("menaces", menaces.map(x => ({a: `<span class="menace">${esc(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes")})));
+    const app = [...e.appareils].sort((a, b) => (b.nouveau - a.nouveau) || (b.en_ligne - a.en_ligne));
+    $("n-appareils").textContent = app.length ? `${fr(app.filter(x => x.en_ligne).length)} en ligne sur ${fr(app.length)}` : "";
+    liste("appareils", app.map(x => ({a: `<i class="pt ${x.en_ligne ? "ok" : ""}"></i>` + esc(x.nom || "Sans nom"), sous: `<span>${esc(x.ip)}</span><span>${esc(x.mac)}</span>`, v: x.nouveau ? '<span class="tag">nouveau</span>' : ""})), "Aucun bail DHCP");
+    const nomMac = Object.fromEntries(e.appareils.filter(x => x.nom).map(x => [x.mac.toLowerCase(), x.nom]));
+    $("n-fixes").textContent = e.ip_fixes.length ? fr(e.ip_fixes.length) : "";
+    liste("fixes", e.ip_fixes.map(x => ({a: esc(x.ip), sous: `<span>${esc(x.mac)}</span><span>${esc(x.interface)}</span>`, v: esc(nomMac[x.mac] || "")})), "Aucune");
+    liste("sansdns", e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu)})));
+    const fc = part(e.gros_consommateurs, x => x.debit);
+    liste("conso", e.gros_consommateurs.map(x => ({a: qui(x), v: b(x.debit), f: fc(x)})), "Calme");
+    const fp = part(e.dns.pub_bloquee, x => x.n);
+    liste("pub", e.dns.pub_bloquee.map(x => ({a: qui(x), v: pl(x.n, "pub", "pubs"), f: fp(x)})), "Aucune");
+    $("total-dns").textContent = `${pl(e.dns.requetes_24h, "requête", "requêtes")} en 24 h`;
+    const fq = part(e.dns.clients, x => x.n);
+    liste("clients", e.dns.clients.map(x => ({a: qui(x), v: pl(x.n, "requête", "requêtes"), f: fq(x)})));
+    const fd = part(e.dns.domaines, x => x[1]);
+    liste("domaines", e.dns.domaines.map(x => ({a: esc(x[0]), v: pl(x[1], "requête", "requêtes"), f: fd(x)})));
+    liste("nouveaux", e.dns.nouveaux_domaines.map(([d, t]) => ({a: esc(d), v: heure(t)})));
+    liste("interfaces", Object.entries(e.interfaces).map(([i, d]) => ({
+      a: `<i class="pt ${d.etat === "up" ? "ok" : d.etat === "down" ? "ko" : ""}"></i>${esc(i)}`,
+      sous: [d.etat === "down" ? "<span>coupé</span>" : "", d.vitesse ? `<span>${vitesse(d.vitesse)}</span>` : "", d.erreurs ? `<span>${pl(d.erreurs, "erreur", "erreurs")}</span>` : "", d.pertes ? `<span>${pl(d.pertes, "paquet perdu", "paquets perdus")}</span>` : ""].join(""),
+      v: `↓ ${b(d.rx)}   ↑ ${b(d.tx)}`})));
+
+    $("sys").textContent = `En marche depuis ${fr(s.uptime/86400,1)} j, charge ${fr(s.charge[0],2)}, mémoire libre ${o(s.memoire.dispo)} sur ${o(s.memoire.totale)}`
+      + (s.temperature ? `, ${fr(s.temperature)} °C` : "") + ".";
+    $("listes").textContent = `Listes de blocage : ${nb(s.listes.menaces)} domaines malveillants, ${nb(s.listes.pub)} domaines de pub, ${nb(s.listes.ip)} IP.`;
+
+    derniere = e.maintenant;
+    document.body.classList.remove("perime");
+    $("maj").textContent = `À jour à ${heure(derniere)}`;
+  } catch (err) {
+    document.body.classList.add("perime");
+    $("phare").className = "phare";
+    $("etat").textContent = "Vigie injoignable";
+    $("maj").textContent = derniere ? `Chiffres de ${heure(derniere)}` : "";
+  }
 }
 maj(); setInterval(maj, 5000);
 </script>
