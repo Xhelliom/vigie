@@ -2,7 +2,7 @@
 self: { config, lib, pkgs, ... }:
 let
   cfg = config.services.vigie;
-  # "set:principal,192.168.1.60,192.168.1.98,12h" -> "principal,192.168.1.60,192.168.1.98"
+  # "set:lan,192.168.1.100,192.168.1.199,12h" -> "lan,192.168.1.100,192.168.1.199"
   plageDnsmasq = r:
     let
       p = lib.splitString "," r;

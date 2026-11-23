@@ -1106,14 +1106,14 @@ mod tests {
     #[test]
     fn conntrack() {
         let l = "ipv4 2 tcp 6 300 ESTABLISHED src=192.168.1.5 dst=93.184.216.34 sport=5000 dport=443 packets=10 bytes=1200 \
-                 src=93.184.216.34 dst=192.168.254.2 sport=443 dport=5000 packets=9 bytes=3400 [ASSURED] mark=0 use=1";
+                 src=93.184.216.34 dst=192.168.0.2 sport=443 dport=5000 packets=9 bytes=3400 [ASSURED] mark=0 use=1";
         assert_eq!(analyser_conntrack(l), Some(("192.168.1.5", "93.184.216.34", 1200, 3400)));
         assert_eq!(analyser_conntrack("ipv4 2 udp 17 src=1.1.1.1 dst=2.2.2.2 sport=1 dport=2"), None);
     }
 
     #[test]
     fn adresses() {
-        assert!(local("192.168.1.42") && local("10.99.99.7") && !local("8.8.8.8") && !local("pas une ip"));
+        assert!(local("192.168.1.42") && local("10.1.2.7") && !local("8.8.8.8") && !local("pas une ip"));
         assert!(public("93.184.216.34") && !public("192.168.1.1") && !public("100.64.0.1") && !public("127.0.0.1"));
         assert_eq!(cidr("10.20.0.0/24"), Some((0x0a14_0000, 0xffff_ff00)));
     }
@@ -1124,11 +1124,11 @@ mod tests {
                    192.168.1.10     0x1         0x2         AA:BB:CC:00:11:23     *        enp2s0\n\
                    192.168.1.77     0x1         0x0         00:00:00:00:00:00     *        enp2s0\n";
         assert_eq!(analyser_arp(arp), vec![("192.168.1.10".into(), "aa:bb:cc:00:11:23".into(), "enp2s0".into())]);
-        let route = "Iface\tDestination\tGateway \tFlags\n enp1s0\t00000000\t01FEA8C0\t0003\n enp2s0\t0001A8C0\t00000000\t0001\n";
-        assert_eq!(analyser_route(route).as_deref(), Some("192.168.254.1"));
+        let route = "Iface\tDestination\tGateway \tFlags\n enp1s0\t00000000\t0100A8C0\t0003\n enp2s0\t0001A8C0\t00000000\t0001\n";
+        assert_eq!(analyser_route(route).as_deref(), Some("192.168.0.1"));
         assert_eq!(analyser_ping("64 bytes from 1.1.1.1: icmp_seq=1 ttl=58 time=12.4 ms"), Some(12.4));
         assert_eq!(analyser_ping("1 packets transmitted, 0 received"), None);
-        assert_eq!(plage("principal,192.168.1.60,192.168.1.98"), Some(("principal".into(), 0xc0a8_013c, 0xc0a8_0162)));
+        assert_eq!(plage("lan,192.168.1.100,192.168.1.199"), Some(("lan".into(), 0xc0a8_0164, 0xc0a8_01c7)));
         assert_eq!(plage(",10.0.0.9,10.0.0.1"), None);
     }
 

@@ -251,7 +251,6 @@
     <p id="cumul"></p></section>
   <section class="pan alertes" id="alertes-p"><h3>À regarder <span id="n-alertes"></span></h3><ul id="alertes"></ul><div class="sante" id="sante"></div></section>
   <section class="pan" id="s-menaces" hidden><h3>Domaines malveillants bloqués <span>24 h</span></h3><ul id="menaces"></ul></section>
-  <section class="pan" id="s-sansdns" hidden><h3>Connexions sans DNS <span>24 h</span></h3><p>Vers une IP jamais annoncée par le DNS : souvent normal, à surveiller pour les objets connectés.</p><ul id="sansdns"></ul></section>
 
   <section class="pan appareils" id="appareils"><h3>Appareils <span id="n-appareils"></span></h3>
     <div class="chips" id="chips" role="group" aria-label="Filtres"></div>
@@ -553,7 +552,7 @@ function rendre() {
   const rowMen = d.menaces.map(x => ({a: `<span class="menace">${qd(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes"), t: `${x.domaine} ${x.nom || ""} ${x.ip}`}));
   const rowSans = e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu), t: `${x.nom || ""} ${x.ip} ${x.vers}`}));
   $("s-menaces").hidden = !d.menaces.length; liste("menaces", rowMen);
-  $("s-sansdns").hidden = !e.sans_dns.length; liste("sansdns", rowSans);
+  
 
   // tableau des appareils : filtres, tri, 15 lignes puis « Afficher les n autres »
   const st = ui.filt.filter(k => FILT[k]), rs = ui.filt.filter(k => k.startsWith("res:")).map(k => k.slice(4));
@@ -570,12 +569,12 @@ function rendre() {
   $("n-res").textContent = pl(e.reseaux.length, "réseau", "réseaux");
   poser("reseaux", e.reseaux.map(r => {
     const l = e.interfaces[r.interface] || {}, p = r.plage ? r.baux / r.plage.taille : 0;
-    return `<div class="res"><h4>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : "ko"}" title="${esc(l.etat || "inconnu")}"></i></h4>
+    return `<div class="res"><h4>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : ""}" title="${esc(l.etat || "inconnu")}"></i></h4>
       <p class="mono">${esc(r.cidr)}${l.vitesse ? ` · ${vitesse(l.vitesse)}` : ""}</p>
       <p>${fr(r.en_ligne)} en ligne · ${pl(r.baux, "bail", "baux")} · ${pl(r.ip_fixes, "IP fixe", "IP fixes")}</p>
       ${r.plage ? `<div class="jauge${p >= .9 ? " pleine" : ""}" style="--f:${Math.min(p, 1).toFixed(3)}"><i></i></div><p>DHCP ${fr(Math.round(p * 100))} % occupé</p>` : "<p>Pas de plage DHCP</p>"}</div>`;
   }).join(""));
-  poser("interfaces", Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.etat === "up" ? "ok" : x.etat === "down" ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(x.etat)}</span></td>`
+  poser("interfaces", Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.etat === "up" ? "ok" : x.etat === "down" && i === e.wan ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(x.etat)}</span></td>`
     + `<td class="num">${x.vitesse ? vitesse(x.vitesse) : x.etat === "down" ? "coupé" : ""}</td><td class="num">↓ ${b(x.rx)}</td><td class="num">↑ ${b(x.tx)}</td><td class="num doux">${x.erreurs ? pl(x.erreurs, "erreur", "erreurs") : ""}</td></tr>`).join(""));
 
   $("total-dns").textContent = pl(d.requetes_24h, "requête", "requêtes");
