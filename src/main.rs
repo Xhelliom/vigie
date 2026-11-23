@@ -774,9 +774,7 @@ fn repartir(par_domaine: &HashMap<&str, usize>) -> (Value, Value) {
 fn fiche(ip: &str) -> Value {
     let e = verrou();
     let t = maintenant();
-    let nom = e.appareils.values().find(|a| a.ip.as_deref() == Some(ip)).and_then(|a| a.nom.clone())
-        .or_else(|| cfg().noms.get(ip).cloned())
-        .or_else(|| est_routeur(ip, &e.adresses).then(|| "routeur".into()));
+    let nom = nom_de(&e, ip);
     let (mut total, mut par_domaine, mut par_heure) = (0, HashMap::new(), [0u32; 24]);
     for r in e.requetes.iter().filter(|r| r.1 == ip) {
         total += 1;
@@ -797,6 +795,47 @@ fn fiche(ip: &str) -> Value {
         "bloques": plus_frequents(bloques.iter().map(|b| (b.2.as_str(), b.3)), 20).into_iter()
             .map(|((d, l), n)| json!({"domaine": d, "liste": l, "n": n})).collect::<Vec<_>>(),
     })
+}
+
+fn nom_de(e: &Etat, ip: &str) -> Option<String> {
+    e.appareils.values().find(|a| a.ip.as_deref() == Some(ip)).and_then(|a| a.nom.clone())
+        .or_else(|| cfg().noms.get(ip).cloned())
+        .or_else(|| est_routeur(ip, &e.adresses).then(|| "routeur".into()))
+}
+
+/// Nom de domaine acceptable pour /api/domaine : 1 à 253 caractères de [a-z0-9._-].
+fn domaine_valide(d: &str) -> bool {
+    !d.is_empty() && d.len() <= 253 && d.bytes().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, b'.' | b'_' | b'-'))
+}
+
+/// `c` est `d` ou un de ses sous-domaines.
+fn sous_domaine(c: &str, d: &str) -> bool {
+    c.strip_suffix(d).is_some_and(|r| r.is_empty() || r.ends_with('.'))
+}
+
+/// Fiche d'un domaine (et de ses sous-domaines) sur 24 h. `None` si `d` est invalide.
+fn fiche_domaine(d: &str) -> Option<Value> {
+    let d = d.to_ascii_lowercase();
+    let d = d.trim_end_matches('.');
+    if !domaine_valide(d) {
+        return None;
+    }
+    let (e, t) = (verrou(), maintenant());
+    let (mut total, mut clients, mut sous, mut par_heure) = (0, HashMap::<&str, usize>::new(), HashMap::<&str, usize>::new(), [0u32; 24]);
+    for r in e.requetes.iter().filter(|r| sous_domaine(&r.2, d)) {
+        total += 1;
+        *clients.entry(r.1.as_str()).or_default() += 1;
+        *sous.entry(r.2.as_str()).or_default() += 1;
+        if let Some(h) = tranche(t, r.0) {
+            par_heure[h] += 1;
+        }
+    }
+    let premier = e.domaines_vus.iter().filter(|(k, _)| sous_domaine(k, d)).map(|(_, &ts)| ts).reduce(f64::min);
+    Some(json!({
+        "domaine": d, "requetes_24h": total, "premier": premier, "par_heure": par_heure,
+        "clients": top(&clients, 20).into_iter().map(|(ip, n)| json!({"ip": ip, "nom": nom_de(&e, ip), "n": n})).collect::<Vec<_>>(),
+        "sous": top(&sous, 20),
+    }))
 }
 
 /// GET /api/historique?p=1h|24h|30j : séries du WAN (et latences sur 1 h). `None` si `p` est invalide.
@@ -1005,6 +1044,12 @@ fn servir(mut s: TcpStream) {
                 None => repondre(&mut s, "400 Bad Request", "text/plain", b"periode invalide (1h, 24h ou 30j)"),
             }
         }
+        (Some("GET"), Some(chemin)) if chemin.starts_with("/api/domaine?") => {
+            match param(chemin, "d").and_then(fiche_domaine) {
+                Some(f) => repondre(&mut s, "200 OK", "application/json", f.to_string().as_bytes()),
+                None => repondre(&mut s, "400 Bad Request", "text/plain", b"domaine invalide"),
+            }
+        }
         (Some("GET"), Some(chemin)) if chemin.starts_with("/api/appareil?") => {
             match param(chemin, "ip").filter(|ip| ip.parse::<Ipv4Addr>().is_ok()) {
                 Some(ip) => repondre(&mut s, "200 OK", "application/json", fiche(ip).to_string().as_bytes()),
@@ -1195,5 +1240,16 @@ mod tests {
         assert_eq!((h["pas"].as_u64(), h["unite"].as_str()), (Some(60), Some("o/s")));
         assert!(historique("1h").is_some_and(|h| h["latences"].is_array()));
         assert!(historique("30j").is_some_and(|h| h["pas"] == 86400 && h["unite"] == "o" && h.get("latences").is_none()));
+    }
+
+    #[test]
+    fn fiche_dom() {
+        assert!(domaine_valide("a-b_c.exemple.example") && domaine_valide("x"));
+        assert!(!domaine_valide("") && !domaine_valide("a b.example") && !domaine_valide("a/b") && !domaine_valide("é.example") && !domaine_valide("a%2e.example"));
+        assert!(domaine_valide(&"a".repeat(253)) && !domaine_valide(&"a".repeat(254)));
+        assert!(sous_domaine("cdn.exemple.example", "exemple.example") && sous_domaine("exemple.example", "exemple.example"));
+        assert!(!sous_domaine("xexemple.example", "exemple.example") && !sous_domaine("example", "exemple.example"));
+        assert!(fiche_domaine("a b").is_none() && fiche_domaine("").is_none() && fiche_domaine("../etc").is_none());
+        assert!(fiche_domaine("Exemple.Example.").is_some_and(|f| f["domaine"] == "exemple.example" && f["requetes_24h"] == 0));
     }
 }

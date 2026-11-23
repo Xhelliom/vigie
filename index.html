@@ -274,8 +274,8 @@
     <div class="fiche-tete"><div><h3 id="f-nom"></h3><p id="f-ip"></p><p id="f-vu"></p></div><form method="dialog"><button class="fermer" aria-label="Fermer">×</button></form></div>
     <div class="chiffres" id="f-chiffres"></div>
     <h4>Requêtes par heure <span>24 h</span></h4><div id="f-h"><div class="mini fb"></div></div>
-    <h4>Domaines demandés <span>24 h</span></h4><ul id="f-domaines"></ul>
-    <h4>Bloqués pour cet appareil <span>24 h</span></h4><ul id="f-bloques"></ul>
+    <h4><span id="f-t1" style="color:inherit;font-size:inherit;font-weight:inherit">Domaines demandés</span> <span>24 h</span></h4><ul id="f-domaines"></ul>
+    <h4><span id="f-t2" style="color:inherit;font-size:inherit;font-weight:inherit">Bloqués pour cet appareil</span> <span>24 h</span></h4><ul id="f-bloques"></ul>
   </div>
 </dialog>
 
@@ -292,6 +292,7 @@ const date = t => t ? new Date(t*1000).toLocaleDateString("fr-FR", {day:"numeric
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const dom = d => esc(d).replaceAll(".", ".<wbr>");
 const qui = x => x.ip ? `<button type="button" class="qui" data-ip="${esc(x.ip)}">${esc(x.nom || x.ip)}</button>` : esc(x.nom || "");
+const qd = d => `<button type="button" class="qui" data-d="${esc(d)}">${dom(d)}</button>`;
 const ipn = ip => ip ? ip.split(".").reduce((a, c) => a * 256 + +c, 0) : 0;
 // Préférences de l'interface, gardées dans le navigateur (jamais bloquant) ; la recherche n'y est pas
 const ui = {per: "5m", tri: {k: "etat", d: 1}, filt: [], lim: {}, ouv: {}, onglet: "nouv", tout: false, q: ""};
@@ -324,9 +325,9 @@ function groupes(id, gs, vide, brut) {
   const f = part(gs, g => g.n);
   liste(id, gs.map(g => {
     const cle = id + ":" + g.domaine, reste = g.nb_sous - g.sous.length;
-    const a = g.nb_sous === 1 ? dom(g.sous[0][0])
-      : `<details data-g="${esc(cle)}"${ui.ouv[cle] ? " open" : ""}><summary>${dom(g.domaine)}<span class="nb">${pl(g.nb_sous, "sous-domaine", "sous-domaines")}</span></summary>`
-        + `<ul class="sous">${g.sous.map(([d, n]) => `<li><div class="p">${dom(d)}</div><span class="v">${fr(n)}</span></li>`).join("")}`
+    const a = g.nb_sous === 1 ? qd(g.sous[0][0])
+      : `<details data-g="${esc(cle)}"${ui.ouv[cle] ? " open" : ""}><summary>${qd(g.domaine)}<span class="nb">${pl(g.nb_sous, "sous-domaine", "sous-domaines")}</span></summary>`
+        + `<ul class="sous">${g.sous.map(([d, n]) => `<li><div class="p">${qd(d)}</div><span class="v">${fr(n)}</span></li>`).join("")}`
         + `${reste > 0 ? `<li class="vide">et ${pl(reste, "autre", "autres")}</li>` : ""}</ul></details>`;
     return {a, v: pl(g.n, "requête", "requêtes"), f: f(g), t: g.domaine + " " + g.sous.map(x => x[0]).join(" ")};
   }), vide, brut);
@@ -334,6 +335,7 @@ function groupes(id, gs, vide, brut) {
 async function fiche(ip) {
   try {
     const f = await (await fetch("api/appareil?ip=" + encodeURIComponent(ip))).json(), x = lignesApp.find(l => l.ip === ip) || {};
+    $("f-t1").textContent = "Domaines demandés"; $("f-t2").textContent = "Bloqués pour cet appareil";
     $("f-nom").textContent = f.nom || x.nom || ip;
     $("f-ip").textContent = [ip, x.mac, x.reseau, x.fixe ? "IP fixe" : x.bail ? "bail DHCP" : ""].filter(Boolean).join(" · ");
     $("f-vu").textContent = x.premier || x.vu ? `Premier vu ${date(x.premier)} · ${x.en_ligne ? "en ligne" : "dernier vu " + date(x.vu)}` : "";
@@ -343,18 +345,36 @@ async function fiche(ip) {
     groupes("f-domaines", f.groupes, "Aucune requête", 1);
     liste("f-bloques", f.bloques.map(x => ({a: x.liste === "menaces" ? `<span class="menace">${dom(x.domaine)}</span>` : dom(x.domaine), t: x.domaine,
       sous: x.liste === "menaces" ? "domaine malveillant" : "publicité", v: pl(x.n, "fois", "fois")})), "Rien de bloqué", 1);
-    const d = $("fiche");
-    if (!d.open) {
-      ouvert = ip;
-      if (matchMedia("(min-width:1100px)").matches) { d.show(); document.body.classList.add("lateral"); } else d.showModal();
-    }
+    ouvrir(ip);
   } catch (err) { /* vigie injoignable : l'en-tête le signale déjà */ }
 }
-$("fiche").addEventListener("close", () => { document.body.classList.remove("lateral"); document.querySelector(`.qui[data-ip="${ouvert}"]`)?.focus(); });
+function ouvrir(ip) {
+  const d = $("fiche");
+  if (d.open) return;
+  ouvert = [document.activeElement, ip];
+  if (matchMedia("(min-width:1100px)").matches) { d.show(); document.body.classList.add("lateral"); } else d.showModal();
+}
+// Fiche d'un domaine : qui l'interroge, ses sous-domaines, requêtes par heure
+async function fichedom(dm) {
+  try {
+    const f = await (await fetch("api/domaine?d=" + encodeURIComponent(dm))).json();
+    $("f-t1").textContent = "Sous-domaines demandés"; $("f-t2").textContent = "Qui l'interroge";
+    $("f-nom").textContent = f.domaine;
+    $("f-ip").textContent = "Domaine et sous-domaines";
+    $("f-vu").textContent = f.premier ? `Premier vu le ${date(f.premier)}` : "";
+    $("f-chiffres").innerHTML = `<div><b>${fr(f.requetes_24h)}</b><span>${f.requetes_24h > 1 ? "requêtes" : "requête"}</span></div><div><b>${fr(f.clients.length)}</b><span>${f.clients.length > 1 ? "appareils" : "appareil"}</span></div>`;
+    mini("f-h", f.par_heure, 1);
+    liste("f-domaines", f.sous.map(([x, n]) => ({a: dom(x), t: x, v: fr(n)})), "Aucune requête", 1);
+    liste("f-bloques", f.clients.map(x => ({a: qui(x), t: x.ip, v: pl(x.n, "requête", "requêtes")})), "Personne", 1);
+    ouvrir("");
+  } catch (err) { /* idem */ }
+}
+$("fiche").addEventListener("close", () => { document.body.classList.remove("lateral"); (ouvert[0].isConnected ? ouvert[0] : document.querySelector(`.qui[data-ip="${ouvert[1]}"]`))?.focus(); });
 const calme = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 document.addEventListener("click", ev => {
   const t = ev.target, bt = t.closest("button"), al = t.closest(".al a");
-  if (bt?.classList.contains("qui")) fiche(bt.dataset.ip);
+  if (bt?.dataset.d) { ev.preventDefault(); fichedom(bt.dataset.d); }
+  else if (bt?.classList.contains("qui")) fiche(bt.dataset.ip);
   else if (t === $("fiche")) $("fiche").close();
   else if (bt?.dataset.plus) { ui.lim[bt.dataset.plus] = !ui.lim[bt.dataset.plus]; sauver(); rendre(); }
   else if (bt?.dataset.f) { const k = bt.dataset.f; ui.filt = ui.filt.includes(k) ? ui.filt.filter(x => x !== k) : [...ui.filt, k]; sauver(); rendre(); }
@@ -530,7 +550,7 @@ function rendre() {
     age == null ? "" : `<div class="indic"><i class="pt ${age < 48 ? "ok" : "att"}"></i>Listes <span>il y a ${age < 1 ? "moins d'1 h" : age < 48 ? fr(age) + " h" : fr(age / 24) + " j"}</span></div>`,
   ].join(""));
 
-  const rowMen = d.menaces.map(x => ({a: `<span class="menace">${dom(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes"), t: `${x.domaine} ${x.nom || ""} ${x.ip}`}));
+  const rowMen = d.menaces.map(x => ({a: `<span class="menace">${qd(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes"), t: `${x.domaine} ${x.nom || ""} ${x.ip}`}));
   const rowSans = e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu), t: `${x.nom || ""} ${x.ip} ${x.vers}`}));
   $("s-menaces").hidden = !d.menaces.length; liste("menaces", rowMen);
   $("s-sansdns").hidden = !e.sans_dns.length; liste("sansdns", rowSans);
@@ -563,11 +583,11 @@ function rendre() {
   liste("clients", d.clients.map(x => ({a: qui(x), v: fr(x.n), f: fq(x), t: `${x.nom || ""} ${x.ip}`})));
   groupes("domaines", d.groupes, "Aucune requête");
   $("n-attendu").textContent = pl(d.attendu.n, "requête", "requêtes");
-  liste("attendu", d.attendu.domaines.map(([x, n]) => ({a: dom(x), v: fr(n), t: x})), "Aucun");
+  liste("attendu", d.attendu.domaines.map(([x, n]) => ({a: qd(x), v: fr(n), t: x})), "Aucun");
   $("technique").textContent = d.technique.n ? `Trafic technique (DNS inverse, mDNS, WPAD…) : ${pl(d.technique.n, "requête", "requêtes")}.` : "";
   const fp = part(d.pub_bloquee, x => x.n);
   const ONG = {
-    nouv: ["Nouveaux", d.nouveaux_groupes.length, d.nouveaux_groupes.map(g => ({a: dom(g.domaine), sous: pl(g.n, "nouveau domaine", "nouveaux domaines"), v: heure(g.dernier), t: g.domaine})), "Aucun"],
+    nouv: ["Nouveaux", d.nouveaux_groupes.length, d.nouveaux_groupes.map(g => ({a: qd(g.domaine), sous: pl(g.n, "nouveau domaine", "nouveaux domaines"), v: heure(g.dernier), t: g.domaine})), "Aucun"],
     pub: ["Pubs", d.bloques_24h.pub, d.pub_bloquee.map(x => ({a: qui(x), v: pl(x.n, "pub", "pubs"), f: fp(x), t: `${x.nom || ""} ${x.ip}`})), "Aucune"],
     men: ["Menaces", d.bloques_24h.menaces, rowMen, "Rien à signaler"], sdns: ["Sans DNS", e.sans_dns.length, rowSans, "Rien à signaler"],
   };

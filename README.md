@@ -42,9 +42,10 @@ services.vigie = {
 };
 ```
 
-La page est rangée en sections : état, sécurité, activité, réseau, système. Les domaines sont regroupés par
-domaine principal (dépliables), le trafic attendu est replié à part, et un clic sur un appareil ouvre sa fiche
-(domaines demandés et blocages sur 24 h, `GET /api/appareil?ip=…`).
+La page tient sur une grille (chiffres-clés, trafic WAN 5 min à 30 j, alertes, tableau des appareils triable et filtrable,
+DNS en trois panneaux). Les domaines sont regroupés par domaine principal, le trafic attendu est replié à part, un clic sur
+un appareil ou un domaine ouvre sa fiche (panneau latéral dès 1100 px). Raccourcis : `/` recherche, `Échap` ferme la fiche.
+Les préférences (période, tri, filtres) sont gardées dans le navigateur ; l'onglet caché ne fait aucune requête.
 
 Le routeur doit aussi activer `services.vnstat` et dnsmasq avec `log-queries=extra`. Le service tourne en
 root (lecture de conntrack) mais confiné (`ProtectSystem=strict`, `MemoryMax=96M`).
@@ -57,6 +58,7 @@ Tout est en lecture seule, sans authentification, et rien ne lance de processus 
 |---|---|
 | `GET /api/etat` | état complet (tous les champs historiques sont conservés ; les nouveaux sont des ajouts) |
 | `GET /api/historique?p=1h\|24h\|30j` | `{"fin","pas","unite","rx":[…],"tx":[…]}` : débit du WAN, le plus ancien d'abord, `fin` = date du dernier point. `1h` : pas 5 s, en o/s, avec `latences` (`[{"nom","cible","ms":[…]}]`, pas 30 s, `null` = sans réponse) ; `24h` : moyennes à la minute, en o/s ; `30j` : totaux journaliers vnstat, en octets. `p` invalide : 400 |
+| `GET /api/domaine?d=…` | fiche d'un domaine et de ses sous-domaines sur 24 h : `{"domaine","requetes_24h","premier","clients":[{ip,nom,n}…20],"sous":[[d,n]…20],"par_heure":[24]}`. `d` : 1 à 253 caractères `[a-z0-9._-]`, sinon 400 |
 | `GET /api/appareil?ip=…` | fiche d'un appareil : domaines, blocages, `par_heure` (24 tranches horaires, la dernière = l'heure écoulée) |
 
 Ajouts à `/api/etat` :
