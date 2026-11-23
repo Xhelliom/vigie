@@ -1,466 +1,549 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vigie</title>
 <style>
   :root {
-    --fond:#e9ecec; --surface:#fff; --texte:#141d1c; --doux:#54605e; --filet:rgba(20,29,28,.1);
-    --mer:#1f6f6a; --serie2:#6b7fd6; --ok:#2e9d5b; --attention:#c98a00; --critique:#d1343b; --feu:#d9822b;
-    --verre:rgba(255,255,255,.68); --bord:rgba(255,255,255,.85); --haut:rgba(255,255,255,.95);
-    --reflet:linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,0) 38%);
+    --bg:#e9ecec; --surface:#fff; --text:#141d1c; --muted:#54605e; --line:rgba(20,29,28,.1);
+    --accent:#1f6f6a; --series2:#6b7fd6; --ok:#2e9d5b; --warn:#c98a00; --crit:#d1343b; --fire:#d9822b;
+    --glass:rgba(255,255,255,.68); --edge:rgba(255,255,255,.85); --hi:rgba(255,255,255,.95);
+    --sheen:linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,0) 38%);
     color-scheme: light dark;
   }
   @media (prefers-color-scheme: dark) { :root {
-    --fond:#0d1414; --surface:#162020; --texte:#e8f0ee; --doux:#9fb0ad; --filet:rgba(255,255,255,.09);
-    --mer:#5cc2b8; --serie2:#9aa8ff; --ok:#5fd08a; --attention:#f0b84a; --critique:#ff6b6b; --feu:#f0a34a;
-    --verre:rgba(24,36,36,.6); --bord:rgba(255,255,255,.1); --haut:rgba(255,255,255,.14);
-    --reflet:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%);
+    --bg:#0d1414; --surface:#162020; --text:#e8f0ee; --muted:#9fb0ad; --line:rgba(255,255,255,.09);
+    --accent:#5cc2b8; --series2:#9aa8ff; --ok:#5fd08a; --warn:#f0b84a; --crit:#ff6b6b; --fire:#f0a34a;
+    --glass:rgba(24,36,36,.6); --edge:rgba(255,255,255,.1); --hi:rgba(255,255,255,.14);
+    --sheen:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%);
   } }
   * { box-sizing:border-box; }
-  body { margin:0; font:14px/1.4 "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--fond); color:var(--texte); -webkit-font-smoothing:antialiased; }
+  body { margin:0; font:14px/1.4 "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--text); -webkit-font-smoothing:antialiased; }
   a { color:inherit; }
-  small, .doux { color:var(--doux); }
-  :focus-visible { outline:2px solid var(--mer); outline-offset:2px; border-radius:6px; }
+  small, .muted { color:var(--muted); }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:6px; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
-  #q { flex:0 1 300px; min-width:120px; font:inherit; padding:6px 10px; border-radius:9px; border:1px solid var(--bord); color:var(--texte); background:color-mix(in srgb, var(--surface) 60%, transparent); }
+  #q { flex:0 1 300px; min-width:120px; font:inherit; padding:6px 10px; border-radius:9px; border:1px solid var(--edge); color:var(--text); background:color-mix(in srgb, var(--surface) 60%, transparent); }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 8px; }
-  .chips button { font:inherit; font-size:12.5px; padding:2px 10px; border-radius:999px; border:1px solid var(--filet); background:none; color:var(--texte); cursor:pointer; }
-  .chips button[aria-pressed=true], .chips button[aria-selected=true] { font-weight:650; border-color:var(--mer); background:color-mix(in srgb, var(--mer) 22%, transparent); }
+  .chips button { font:inherit; font-size:12.5px; padding:2px 10px; border-radius:999px; border:1px solid var(--line); background:none; color:var(--text); cursor:pointer; }
+  .chips button[aria-pressed=true], .chips button[aria-selected=true] { font-weight:650; border-color:var(--accent); background:color-mix(in srgb, var(--accent) 22%, transparent); }
   th button { font:inherit; text-transform:inherit; letter-spacing:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; }
   th[aria-sort=ascending] button::after { content:" ▲"; } th[aria-sort=descending] button::after { content:" ▼"; }
-  li.plus { justify-content:center; } .plus button { font:inherit; font-size:12.5px; color:var(--mer); background:none; border:0; padding:2px 0; cursor:pointer; }
+  li.plus { justify-content:center; } .plus button { font:inherit; font-size:12.5px; color:var(--accent); background:none; border:0; padding:2px 0; cursor:pointer; }
   .plus:not(li) { text-align:center; margin-top:4px; }
   .num, td.num, th.num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
   .mono { font:12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-  /* Fond : trois halos flous qui dérivent derrière le verre */
+  /* Background: three blurred halos drifting behind the glass */
   .halos { position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none; }
   .halos i { position:absolute; width:55vmax; height:55vmax; border-radius:50%; filter:blur(80px); will-change:transform; }
-  .halos i:nth-child(1) { top:-22vmax; left:-14vmax; background:var(--mer); opacity:.29; animation:derive1 48s ease-in-out infinite alternate; }
-  .halos i:nth-child(2) { top:8vh; right:-22vmax; background:var(--feu); opacity:.19; animation:derive2 62s ease-in-out infinite alternate; }
-  .halos i:nth-child(3) { bottom:-26vmax; left:22vw; background:color-mix(in srgb, var(--mer) 55%, #6f9cff); opacity:.23; animation:derive3 55s ease-in-out infinite alternate; }
+  .halos i:nth-child(1) { top:-22vmax; left:-14vmax; background:var(--accent); opacity:.29; animation:drift1 48s ease-in-out infinite alternate; }
+  .halos i:nth-child(2) { top:8vh; right:-22vmax; background:var(--fire); opacity:.19; animation:drift2 62s ease-in-out infinite alternate; }
+  .halos i:nth-child(3) { bottom:-26vmax; left:22vw; background:color-mix(in srgb, var(--accent) 55%, #6f9cff); opacity:.23; animation:drift3 55s ease-in-out infinite alternate; }
   @media (prefers-color-scheme: dark) { .halos i:nth-child(1) { opacity:.2; } .halos i:nth-child(2) { opacity:.12; } .halos i:nth-child(3) { opacity:.16; } }
-  @keyframes derive1 { to { transform:translate(26vw, 20vh) scale(1.2); } }
-  @keyframes derive2 { to { transform:translate(-30vw, 26vh) scale(.85); } }
-  @keyframes derive3 { to { transform:translate(-24vw, -22vh) scale(1.15); } }
+  @keyframes drift1 { to { transform:translate(26vw, 20vh) scale(1.2); } }
+  @keyframes drift2 { to { transform:translate(-30vw, 26vh) scale(.85); } }
+  @keyframes drift3 { to { transform:translate(-24vw, -22vh) scale(1.15); } }
 
-  /* A : en-tête collant */
+  /* A: sticky header */
   header { position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:8px 20px; flex-wrap:wrap; padding:10px max(16px, calc((100vw - 1760px) / 2 + 16px));
-    background:color-mix(in srgb, var(--fond) 70%, transparent); backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%); }
+    background:color-mix(in srgb, var(--bg) 70%, transparent); backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%); }
   h1 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.035em; line-height:1; }
-  #sys { flex:1; min-width:0; margin:0; font-size:12.5px; color:var(--doux); }
-  .phare { --c:var(--doux); display:flex; align-items:center; gap:10px; text-align:right; margin-left:auto; }
-  .phare.calme { --c:var(--ok); } .phare.attention { --c:var(--attention); } .phare.critique { --c:var(--critique); }
-  .phare strong { display:block; font-size:14px; font-weight:600; }
-  .phare small { display:block; font-size:12px; }
-  .phare i { position:relative; order:2; width:14px; height:14px; border-radius:50%; flex:none;
+  #sys { flex:1; min-width:0; margin:0; font-size:12.5px; color:var(--muted); }
+  .beacon { --c:var(--muted); display:flex; align-items:center; gap:10px; text-align:right; margin-left:auto; }
+  .beacon.calm { --c:var(--ok); } .beacon.warn { --c:var(--warn); } .beacon.crit { --c:var(--crit); }
+  .beacon strong { display:block; font-size:14px; font-weight:600; }
+  .beacon small { display:block; font-size:12px; }
+  .beacon i { position:relative; order:2; width:14px; height:14px; border-radius:50%; flex:none;
     background:radial-gradient(circle at 34% 30%, #fff 0 10%, color-mix(in srgb, var(--c) 55%, #fff) 24%, var(--c) 62%, color-mix(in srgb, var(--c) 65%, #000) 100%);
     box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 20%, transparent); }
-  .phare.attention i, .phare.critique i { box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent), 0 0 16px var(--c); }
-  .phare.attention i::after, .phare.critique i::after { content:""; position:absolute; inset:0; border-radius:50%; background:var(--c); animation:halo 2.4s ease-out infinite; }
+  .beacon.warn i, .beacon.crit i { box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent), 0 0 16px var(--c); }
+  .beacon.warn i::after, .beacon.crit i::after { content:""; position:absolute; inset:0; border-radius:50%; background:var(--c); animation:halo 2.4s ease-out infinite; }
   @keyframes halo { from { transform:scale(1); opacity:.6; } to { transform:scale(3.2); opacity:0; } }
 
-  /* Grille 12 colonnes : téléphone d'abord, puis portable, puis large */
+  /* 12-column grid: phone first, then laptop, then wide */
   .page { max-width:1760px; margin:0 auto; padding:8px 16px 24px; }
-  .grille { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:16px; }
-  .grille > * { grid-column:span 12; min-width:0; scroll-margin-top:64px; }
-  .grille > .tuile { grid-column:span 6; }
-  @media (min-width:700px) { .grille > .tuile { grid-column:span 4; } }
+  .grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:16px; }
+  .grid > * { grid-column:span 12; min-width:0; scroll-margin-top:64px; }
+  .grid > .tile { grid-column:span 6; }
+  @media (min-width:700px) { .grid > .tile { grid-column:span 4; } }
   @media (min-width:1100px) {
-    .trafic { grid-column:span 8 !important; } .alertes { grid-column:span 4 !important; }
+    .traffic { grid-column:span 8 !important; } .alerts { grid-column:span 4 !important; }
     .dns1, .dns2 { grid-column:span 6 !important; }
   }
   @media (max-width:1099px) { .m { display:none; } }
   @media (min-width:1400px) {
-    .grille > .tuile { grid-column:span 2; }
-    .trafic, .alertes { height:316px; }
-    .appareils { grid-column:span 8 !important; } .cote { grid-column:span 4 !important; }
+    .grid > .tile { grid-column:span 2; }
+    .traffic, .alerts { height:316px; }
+    .devices { grid-column:span 8 !important; } .side { grid-column:span 4 !important; }
     .dns1, .dns2, .dns3 { grid-column:span 4 !important; }
   }
 
-  .pan, .tuile { position:relative; background:var(--reflet), var(--verre); border:1px solid var(--bord); border-radius:14px; padding:14px 16px;
+  .pan, .tile { position:relative; background:var(--sheen), var(--glass); border:1px solid var(--edge); border-radius:14px; padding:14px 16px;
     backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
-    box-shadow:inset 0 1px 0 var(--haut), 0 1px 2px rgba(20,40,38,.06), 0 18px 36px -22px rgba(20,40,38,.38); }
+    box-shadow:inset 0 1px 0 var(--hi), 0 1px 2px rgba(20,40,38,.06), 0 18px 36px -22px rgba(20,40,38,.38); }
   .pan > h3 { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:0 0 6px; font-size:15px; font-weight:650; letter-spacing:-.015em; }
-  .pan > h3 span, h4 span { font-size:12.5px; font-weight:450; letter-spacing:0; color:var(--doux); text-align:right; }
-  .pan > p { margin:0 0 6px; font-size:12.5px; color:var(--doux); }
+  .pan > h3 span, h4 span { font-size:12.5px; font-weight:450; letter-spacing:0; color:var(--muted); text-align:right; }
+  .pan > p { margin:0 0 6px; font-size:12.5px; color:var(--muted); }
   h4 { margin:12px 0 2px; font-size:13px; font-weight:650; display:flex; justify-content:space-between; gap:8px; }
 
-  /* B : chiffres-clés */
-  .tuile { height:112px; padding:12px 14px; overflow:hidden; }
-  .tuile h2 { margin:0; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--doux); }
-  .tuile b { display:block; margin-top:2px; font-size:30px; font-weight:620; letter-spacing:-.035em; line-height:1.15; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  .tuile b small, .num small { font-size:.45em; font-weight:500; letter-spacing:0; margin-left:3px; color:var(--doux); }
-  .tuile p { margin:0; font-size:12.5px; color:var(--doux); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tuile .mini { position:absolute; right:12px; bottom:10px; width:36%; height:28px; }
-  .tuile.rx b::before, .tuile.tx b::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--mer); vertical-align:middle; }
-  .tuile.tx b::before { background:var(--serie2); }
+  /* B: key figures */
+  .tile { height:112px; padding:12px 14px; overflow:hidden; }
+  .tile h2 { margin:0; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .tile b { display:block; margin-top:2px; font-size:30px; font-weight:620; letter-spacing:-.035em; line-height:1.15; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tile b small, .num small { font-size:.45em; font-weight:500; letter-spacing:0; margin-left:3px; color:var(--muted); }
+  .tile p { margin:0; font-size:12.5px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tile .mini { position:absolute; right:12px; bottom:10px; width:36%; height:28px; }
+  .tile.rx b::before, .tile.tx b::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--accent); vertical-align:middle; }
+  .tile.tx b::before { background:var(--series2); }
 
-  /* C : trafic et « à regarder » */
-  .trafic { display:flex; flex-direction:column; min-height:240px; }
-  .barre { display:flex; justify-content:space-between; align-items:center; gap:4px 12px; flex-wrap:wrap; margin-bottom:8px; }
-  .per { display:inline-flex; gap:2px; padding:2px; border-radius:9px; background:var(--filet); }
-  .per button { font:inherit; font-size:12.5px; padding:2px 10px; border:0; border-radius:7px; background:none; color:var(--doux); cursor:pointer; }
-  .per button[aria-pressed=true] { background:var(--surface); color:var(--texte); box-shadow:0 1px 2px rgba(0,0,0,.18); }
-  .leg { font-size:12.5px; color:var(--doux); }
-  .leg i { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--mer); margin:0 5px 0 12px; }
-  .leg i.b { background:var(--serie2); }
-  .graphe { position:relative; flex:1; min-height:120px; touch-action:pan-y; cursor:crosshair; }
-  .graphe svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
-  #grille { fill:none; stroke:var(--filet); stroke-width:1; vector-effect:non-scaling-stroke; }
-  #ligne-rx { fill:none; stroke:var(--mer); stroke-width:2; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
-  #ligne-tx { fill:none; stroke:var(--serie2); stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
-  #barres .br { fill:var(--mer); } #barres .bt { fill:var(--serie2); }
-  #ys span { position:absolute; left:0; transform:translateY(-50%); padding:0 4px 0 0; font-size:11.5px; color:var(--doux); pointer-events:none; }
-  #guide { position:absolute; top:0; bottom:0; width:1px; background:var(--doux); opacity:.6; pointer-events:none; }
-  #bulle { position:absolute; top:2px; z-index:2; padding:4px 8px; border-radius:8px; font-size:12px; line-height:1.35; white-space:nowrap; pointer-events:none;
-    background:var(--surface); border:1px solid var(--filet); box-shadow:0 6px 16px -6px rgba(0,0,0,.35); }
-  .xs { display:flex; justify-content:space-between; margin-top:3px; font-size:11.5px; color:var(--doux); }
+  /* C: traffic and "to watch" */
+  .traffic { display:flex; flex-direction:column; min-height:240px; }
+  .bar { display:flex; justify-content:space-between; align-items:center; gap:4px 12px; flex-wrap:wrap; margin-bottom:8px; }
+  .per { display:inline-flex; gap:2px; padding:2px; border-radius:9px; background:var(--line); }
+  .per button { font:inherit; font-size:12.5px; padding:2px 10px; border:0; border-radius:7px; background:none; color:var(--muted); cursor:pointer; }
+  .per button[aria-pressed=true] { background:var(--surface); color:var(--text); box-shadow:0 1px 2px rgba(0,0,0,.18); }
+  .leg { font-size:12.5px; color:var(--muted); }
+  .leg i { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent); margin:0 5px 0 12px; }
+  .leg i.b { background:var(--series2); }
+  .chart { position:relative; flex:1; min-height:120px; touch-action:pan-y; cursor:crosshair; }
+  .chart svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+  #gridlines { fill:none; stroke:var(--line); stroke-width:1; vector-effect:non-scaling-stroke; }
+  #line-rx { fill:none; stroke:var(--accent); stroke-width:2; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+  #line-tx { fill:none; stroke:var(--series2); stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+  #bars .br { fill:var(--accent); } #bars .bt { fill:var(--series2); }
+  #ys span { position:absolute; left:0; transform:translateY(-50%); padding:0 4px 0 0; font-size:11.5px; color:var(--muted); pointer-events:none; }
+  #guide { position:absolute; top:0; bottom:0; width:1px; background:var(--muted); opacity:.6; pointer-events:none; }
+  #tip { position:absolute; top:2px; z-index:2; padding:4px 8px; border-radius:8px; font-size:12px; line-height:1.35; white-space:nowrap; pointer-events:none;
+    background:var(--surface); border:1px solid var(--line); box-shadow:0 6px 16px -6px rgba(0,0,0,.35); }
+  .xs { display:flex; justify-content:space-between; margin-top:3px; font-size:11.5px; color:var(--muted); }
   .mini svg { display:block; width:100%; height:100%; overflow:visible; }
-  .mini path { fill:none; stroke:var(--c, var(--mer)); stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
-  .mini rect { fill:var(--c, var(--mer)); opacity:.75; }
-  .m2 p { max-width:60%; } #k-tx { --c:var(--serie2); }
-  #cumul { margin:4px 0 0; font-size:12.5px; color:var(--doux); }
-  .alertes { display:flex; flex-direction:column; }
-  .alertes ul { overflow-y:auto; flex:1; min-height:0; margin-top:0; }
-  .al { align-items:center; justify-content:flex-start; }
-  .niv { flex:none; min-width:64px; padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:650; text-align:center; border:1px solid currentColor; }
-  .n0 .niv { color:var(--critique); } .n1 .niv { color:var(--attention); } .n2 .niv { color:var(--doux); }
-  .sante { display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:8px; padding-top:8px; border-top:1px solid var(--filet); font-size:12.5px; }
-  .indic { display:flex; align-items:center; gap:6px; } .indic span { color:var(--doux); }
-  .pt { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--doux); flex:none; margin-right:6px; }
+  .mini path { fill:none; stroke:var(--c, var(--accent)); stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+  .mini rect { fill:var(--c, var(--accent)); opacity:.75; }
+  .m2 p { max-width:60%; } #k-tx { --c:var(--series2); }
+  #totals { margin:4px 0 0; font-size:12.5px; color:var(--muted); }
+  .alerts { display:flex; flex-direction:column; }
+  .alerts ul { overflow-y:auto; flex:1; min-height:0; margin-top:0; }
+  .alert { align-items:center; justify-content:flex-start; }
+  .lvl { flex:none; min-width:64px; padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:650; text-align:center; border:1px solid currentColor; }
+  .n0 .lvl { color:var(--crit); } .n1 .lvl { color:var(--warn); } .n2 .lvl { color:var(--muted); }
+  .health { display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line); font-size:12.5px; }
+  .indicator { display:flex; align-items:center; gap:6px; } .indicator span { color:var(--muted); }
+  .pt { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--muted); flex:none; margin-right:6px; }
   .pt.ok { background:var(--ok); box-shadow:0 0 6px color-mix(in srgb, var(--ok) 50%, transparent); }
-  .pt.att { background:var(--attention); } .pt.ko { background:var(--critique); box-shadow:0 0 6px color-mix(in srgb, var(--critique) 55%, transparent); }
-  .indic .pt { margin:0; }
+  .pt.att { background:var(--warn); } .pt.ko { background:var(--crit); box-shadow:0 0 6px color-mix(in srgb, var(--crit) 55%, transparent); }
+  .indicator .pt { margin:0; }
 
   ul { list-style:none; margin:4px 0 0; padding:0; }
   li { position:relative; display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:6px 0; min-height:32px; }
-  li + li { border-top:1px solid var(--filet); }
+  li + li { border-top:1px solid var(--line); }
   li .p { flex:1; min-width:0; overflow-wrap:anywhere; }
-  li .p.une { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; overflow-wrap:normal; }
+  li .p.one { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; overflow-wrap:normal; }
   li small { display:block; font-size:12.5px; overflow-wrap:normal; }
   li small span + span { margin-left:10px; }
   li .v { white-space:nowrap; font-weight:500; font-variant-numeric:tabular-nums; }
-  li.vide { color:var(--doux); }
-  li.barre::after { content:""; position:absolute; left:0; bottom:-1px; height:2px; border-radius:2px; width:calc(var(--f) * 100%); background:linear-gradient(90deg, var(--mer), color-mix(in srgb, var(--mer) 15%, transparent)); }
-  .menace { color:var(--critique); font-weight:600; }
-  .tag { padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:600; border:1px solid var(--bord); background:color-mix(in srgb, var(--attention) 20%, transparent); }
-  .qui { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; text-align:left; text-decoration:underline dotted color-mix(in srgb, var(--doux) 70%, transparent); text-underline-offset:3px; }
-  .qui:hover { text-decoration-color:var(--mer); }
-  .nb { font-size:12.5px; color:var(--doux); margin-left:6px; }
+  li.empty { color:var(--muted); }
+  li.bar::after { content:""; position:absolute; left:0; bottom:-1px; height:2px; border-radius:2px; width:calc(var(--f) * 100%); background:linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 15%, transparent)); }
+  .threat { color:var(--crit); font-weight:600; }
+  .tag { padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:600; border:1px solid var(--edge); background:color-mix(in srgb, var(--warn) 20%, transparent); }
+  .who { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; text-align:left; text-decoration:underline dotted color-mix(in srgb, var(--muted) 70%, transparent); text-underline-offset:3px; }
+  .who:hover { text-decoration-color:var(--accent); }
+  .count { font-size:12.5px; color:var(--muted); margin-left:6px; }
   details > summary { cursor:pointer; list-style:none; }
   details > summary::-webkit-details-marker { display:none; }
-  details > summary::before { content:"▸"; display:inline-block; width:1em; color:var(--doux); transition:transform .15s; }
+  details > summary::before { content:"▸"; display:inline-block; width:1em; color:var(--muted); transition:transform .15s; }
   details[open] > summary::before { transform:rotate(90deg); }
-  ul.sous { margin:2px 0 4px 1em; } ul.sous li { min-height:26px; padding:3px 0; font-size:13px; }
-  .attendu { margin-top:6px; padding-top:6px; border-top:1px solid var(--filet); font-size:13px; }
-  .attendu > summary { color:var(--doux); }
+  ul.subs { margin:2px 0 4px 1em; } ul.subs li { min-height:26px; padding:3px 0; font-size:13px; }
+  .expected { margin-top:6px; padding-top:6px; border-top:1px solid var(--line); font-size:13px; }
+  .expected > summary { color:var(--muted); }
 
-  /* D : tableau des appareils et colonne latérale */
-  .defile { overflow-x:clip; } .liens-d { overflow-x:auto; }
+  /* D: device table and side column */
+  .scroll { overflow-x:clip; } .links-wrap { overflow-x:auto; }
   table { width:100%; border-collapse:collapse; }
-  th { position:sticky; top:48px; z-index:1; padding:4px 8px; font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.05em; color:var(--doux); text-align:left; white-space:nowrap; background:color-mix(in srgb, var(--fond) 80%, transparent); }
-  td { padding:6px 8px; height:32px; border-top:1px solid var(--filet); white-space:nowrap; }
+  th { position:sticky; top:48px; z-index:1; padding:4px 8px; font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); text-align:left; white-space:nowrap; background:color-mix(in srgb, var(--bg) 80%, transparent); }
+  td { padding:6px 8px; height:32px; border-top:1px solid var(--line); white-space:nowrap; }
   td:first-child, th:first-child { padding-left:0; }
-  td.nom { max-width:240px; overflow:hidden; text-overflow:ellipsis; }
-  .res { padding:10px 12px; border-radius:12px; border:1px solid var(--bord); background:color-mix(in srgb, var(--surface) 45%, transparent); }
-  .res h4 { margin:0; font-size:14px; }
-  .res p { margin:2px 0 0; font-size:12.5px; color:var(--doux); }
-  .reseaux { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; margin-bottom:10px; }
-  .jauge { height:6px; border-radius:3px; background:var(--filet); margin:8px 0 4px; overflow:hidden; }
-  .jauge i { display:block; height:100%; width:calc(var(--f) * 100%); background:linear-gradient(180deg, color-mix(in srgb, var(--mer) 50%, #fff), var(--mer) 60%); }
-  .jauge.pleine i { background:var(--attention); }
-  .liens td { height:28px; font-size:13px; }
+  td.name { max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+  .netcard { padding:10px 12px; border-radius:12px; border:1px solid var(--edge); background:color-mix(in srgb, var(--surface) 45%, transparent); }
+  .netcard h4 { margin:0; font-size:14px; }
+  .netcard p { margin:2px 0 0; font-size:12.5px; color:var(--muted); }
+  .networks { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; margin-bottom:10px; }
+  .gauge { height:6px; border-radius:3px; background:var(--line); margin:8px 0 4px; overflow:hidden; }
+  .gauge i { display:block; height:100%; width:calc(var(--f) * 100%); background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 50%, #fff), var(--accent) 60%); }
+  .gauge.full i { background:var(--warn); }
+  .links td { height:28px; font-size:13px; }
   .fb { height:40px; margin-top:8px; }
-  #pied { font-size:12.5px; color:var(--doux); }
-  #pied p { margin:0; }
+  #footer { font-size:12.5px; color:var(--muted); }
+  #footer p { margin:0; }
 
-  /* Fiche d'un appareil */
-  dialog { width:min(560px, calc(100vw - 32px)); max-height:min(82vh, 760px); padding:0; border:1px solid var(--bord); border-radius:14px; color:var(--texte);
-    background:var(--reflet), color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
-    box-shadow:inset 0 1px 0 var(--haut), 0 30px 60px -20px rgba(0,0,0,.45); }
+  /* Device card */
+  dialog { width:min(560px, calc(100vw - 32px)); max-height:min(82vh, 760px); padding:0; border:1px solid var(--edge); border-radius:14px; color:var(--text);
+    background:var(--sheen), color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
+    box-shadow:inset 0 1px 0 var(--hi), 0 30px 60px -20px rgba(0,0,0,.45); }
   dialog::backdrop { background:rgba(10,20,20,.3); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
-  .fiche { padding:16px 18px 10px; }
-  .fiche-tete { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-  .fiche-tete h3 { margin:0; font-size:18px; font-weight:680; letter-spacing:-.02em; overflow-wrap:anywhere; }
-  .fiche-tete p { margin:2px 0 0; font-size:12.5px; color:var(--doux); }
-  .fermer { font:inherit; font-size:22px; line-height:1; padding:2px 9px; border:0; border-radius:8px; background:none; color:var(--doux); cursor:pointer; }
-  .fermer:hover { color:var(--texte); background:var(--filet); }
-  .chiffres { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:10px; }
-  .chiffres b { display:block; font-size:20px; font-weight:620; letter-spacing:-.03em; line-height:1.1; }
-  .chiffres span { font-size:12.5px; color:var(--doux); }
+  .card { padding:16px 18px 10px; }
+  .card-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .card-head h3 { margin:0; font-size:18px; font-weight:680; letter-spacing:-.02em; overflow-wrap:anywhere; }
+  .card-head p { margin:2px 0 0; font-size:12.5px; color:var(--muted); }
+  .close { font:inherit; font-size:22px; line-height:1; padding:2px 9px; border:0; border-radius:8px; background:none; color:var(--muted); cursor:pointer; }
+  .close:hover { color:var(--text); background:var(--line); }
+  .figures { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:10px; }
+  .figures b { display:block; font-size:20px; font-weight:620; letter-spacing:-.03em; line-height:1.1; }
+  .figures span { font-size:12.5px; color:var(--muted); }
 
   @media (min-width:1100px) {
     dialog { position:fixed; z-index:5; inset:0 0 0 auto; margin:0; width:440px; height:100dvh; max-height:100dvh; border-radius:14px 0 0 14px; overflow:auto; }
-    body.lateral .page { padding-right:456px; }
+    body.side-panel .page { padding-right:456px; }
   }
 
-  body.perime .page { filter:grayscale(1); opacity:.5; transition:opacity .3s, filter .3s; }
+  body.stale .page { filter:grayscale(1); opacity:.5; transition:opacity .3s, filter .3s; }
 
-  /* Téléphone : le tableau devient une liste à deux lignes */
+  /* Phone: the table becomes a two-line list */
   @media (max-width:699px) {
     .m { display:none; }
     thead { display:none; }
-    tbody tr { display:grid; grid-template-columns:1fr auto auto; column-gap:12px; border-top:1px solid var(--filet); padding:4px 0; }
+    tbody tr { display:grid; grid-template-columns:1fr auto auto; column-gap:12px; border-top:1px solid var(--line); padding:4px 0; }
     td { border:0; height:auto; padding:1px 0; }
-    td.nom { max-width:none; grid-column:1 / 3; grid-row:1; } td.d { grid-column:3; grid-row:1; }
-    td.ip { grid-column:1; grid-row:2; } td.r { grid-column:2; grid-row:2; } td.vu { grid-column:3; grid-row:2; }
+    td.name { max-width:none; grid-column:1 / 3; grid-row:1; } td.d { grid-column:3; grid-row:1; }
+    td.ip { grid-column:1; grid-row:2; } td.nw { grid-column:2; grid-row:2; } td.seen { grid-column:3; grid-row:2; }
     td.q, td.b { display:none; }
-    .phare small, #sys { display:none; }
+    .beacon small, #sys { display:none; }
     dialog { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; border-radius:0; }
   }
-  @media (prefers-reduced-motion: reduce) { .halos i, .phare i::after { animation:none; } details > summary::before { transition:none; } }
+  @media (prefers-reduced-motion: reduce) { .halos i, .beacon i::after { animation:none; } details > summary::before { transition:none; } }
   @media (prefers-reduced-transparency: reduce) {
-    header { background:var(--fond); backdrop-filter:none; -webkit-backdrop-filter:none; }
+    header { background:var(--bg); backdrop-filter:none; -webkit-backdrop-filter:none; }
     .halos { display:none; }
-    .pan, .tuile, dialog { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--surface); }
+    .pan, .tile, dialog { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--surface); }
   }
-</style>
-</head>
+  #lang { font:inherit; font-size:12px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); background:none; color:var(--muted); cursor:pointer; }
+  h3 b, h4 b, .leg b { font-weight:inherit; }
+</style></head>
 <body>
 <div class="halos" aria-hidden="true"><i></i><i></i><i></i></div>
 <header>
   <h1>Vigie</h1>
-  <input id="q" type="search" placeholder="Rechercher ( / )" aria-label="Rechercher un appareil ou un domaine" autocomplete="off">
+  <input id="q" type="search" data-i18n-ph="search_ph" data-i18n-aria="search_aria" autocomplete="off">
   <p id="sys"></p>
-  <div id="phare" class="phare" role="status"><i aria-hidden="true"></i><div><strong id="etat">Connexion…</strong><small id="maj"></small></div></div>
+  <button id="lang" type="button"></button>
+  <div id="beacon" class="beacon" role="status"><i aria-hidden="true"></i><div><strong id="state"></strong><small id="updated"></small></div></div>
 </header>
 
-<main class="page"><div class="grille">
-  <section class="tuile rx m2" id="k-rx"><h2>Réception</h2><b>–</b><p></p><div class="mini"></div></section>
-  <section class="tuile tx m2" id="k-tx"><h2>Émission</h2><b>–</b><p></p><div class="mini"></div></section>
-  <section class="tuile m2" id="k-lat"><h2>Latence Internet</h2><b>–</b><p></p><div class="mini"></div></section>
-  <section class="tuile" id="k-app"><h2>Appareils en ligne</h2><b>–</b><p></p></section>
-  <section class="tuile m2" id="k-dns"><h2>Requêtes DNS 24 h</h2><b>–</b><p></p><div class="mini"></div></section>
-  <section class="tuile" id="k-blo"><h2>Bloqué 24 h</h2><b>–</b><p></p></section>
+<main class="page"><div class="grid">
+  <section class="tile rx m2" id="k-rx"><h2 data-i18n="k_rx"></h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tile tx m2" id="k-tx"><h2 data-i18n="k_tx"></h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tile m2" id="k-lat"><h2 data-i18n="k_lat"></h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tile" id="k-dev"><h2 data-i18n="k_dev"></h2><b>–</b><p></p></section>
+  <section class="tile m2" id="k-dns"><h2 data-i18n="k_dns"></h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tile" id="k-blk"><h2 data-i18n="k_blk"></h2><b>–</b><p></p></section>
 
-  <section class="pan trafic" id="trafic"><h3>Trafic WAN <span id="lien-wan"></span></h3>
-    <div class="barre"><div class="per" role="group" aria-label="Période"><button data-p="5m">5 min</button><button data-p="1h">1 h</button><button data-p="24h">24 h</button><button data-p="30j">30 j</button></div>
-      <span class="leg"><i></i>Réception<i class="b"></i>Émission</span></div>
-    <div class="graphe" id="graphe" role="img">
+  <section class="pan traffic" id="traffic"><h3><b data-i18n="wan_traffic"></b> <span id="wan-link"></span></h3>
+    <div class="bar"><div class="per" role="group" data-i18n-aria="period"><button data-p="5m">5 min</button><button data-p="1h">1 h</button><button data-p="24h">24 h</button><button data-p="30d" data-i18n="per_30d"></button></div>
+      <span class="leg"><i></i><b data-i18n="k_rx"></b><i class="b"></i><b data-i18n="k_tx"></b></span></div>
+    <div class="chart" id="chart" role="img">
       <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
-        <defs><linearGradient id="degrade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" style="stop-color:var(--mer);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--mer);stop-opacity:0"/>
+        <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color:var(--accent);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--accent);stop-opacity:0"/>
         </linearGradient></defs>
-        <path id="grille"/><path id="aire" fill="url(#degrade)"/><g id="barres"></g><path id="ligne-rx"/><path id="ligne-tx"/>
+        <path id="gridlines"/><path id="area" fill="url(#fade)"/><g id="bars"></g><path id="line-rx"/><path id="line-tx"/>
       </svg>
-      <div id="ys" aria-hidden="true"></div><div id="guide" hidden></div><div id="bulle" hidden></div></div>
+      <div id="ys" aria-hidden="true"></div><div id="guide" hidden></div><div id="tip" hidden></div></div>
     <div class="xs" id="xs" aria-hidden="true"></div>
-    <p id="cumul"></p></section>
-  <section class="pan alertes" id="alertes-p"><h3>À regarder <span id="n-alertes"></span></h3><ul id="alertes"></ul><div class="sante" id="sante"></div></section>
-  <section class="pan" id="s-menaces" hidden><h3>Domaines malveillants bloqués <span>24 h</span></h3><ul id="menaces"></ul></section>
+    <p id="totals"></p></section>
+  <section class="pan alerts" id="alerts-p"><h3><b data-i18n="to_watch"></b> <span id="n-alerts"></span></h3><ul id="alerts"></ul><div class="health" id="health"></div></section>
+  <section class="pan" id="s-threats" hidden><h3><b data-i18n="threats_blocked"></b> <span>24 h</span></h3><ul id="threats"></ul></section>
 
-  <section class="pan appareils" id="appareils"><h3>Appareils <span id="n-appareils"></span></h3>
-    <div class="chips" id="chips" role="group" aria-label="Filtres"></div>
-    <div class="defile"><table><thead><tr><th data-k="nom"><button>Nom</button></th><th data-k="ip"><button>IP</button></th><th class="m" data-k="mac"><button>MAC</button></th><th data-k="reseau"><button>Réseau</button></th><th class="num" data-k="debit"><button>Débit</button></th><th class="num q" data-k="requetes"><button>Req. 24 h</button></th><th class="num b" data-k="bloques"><button>Bloquées</button></th><th class="num" data-k="vu"><button>Dernier vu</button></th><th class="num m" data-k="premier"><button>Premier vu</button></th></tr></thead><tbody id="tb"></tbody></table></div><div class="plus" id="plus-app"></div></section>
-  <section class="pan cote" id="reseaux-p"><h3>Réseaux <span id="n-res"></span></h3><div class="reseaux" id="reseaux"></div>
-    <h4>Liens</h4><div class="liens-d"><table class="liens"><tbody id="interfaces"></tbody></table></div></section>
+  <section class="pan devices" id="devices"><h3><b data-i18n="devices"></b> <span id="n-devices"></span></h3>
+    <div class="chips" id="chips" role="group" data-i18n-aria="filters"></div>
+    <div class="scroll"><table><thead><tr><th data-k="name"><button data-i18n="th_name"></button></th><th data-k="ip"><button>IP</button></th><th class="m" data-k="mac"><button>MAC</button></th><th data-k="network"><button data-i18n="th_network"></button></th><th class="num" data-k="rate"><button data-i18n="th_rate"></button></th><th class="num q" data-k="queries"><button data-i18n="th_queries"></button></th><th class="num b" data-k="blocked"><button data-i18n="th_blocked"></button></th><th class="num" data-k="seen"><button data-i18n="th_seen"></button></th><th class="num m" data-k="first"><button data-i18n="th_first"></button></th></tr></thead><tbody id="tb"></tbody></table></div><div class="plus" id="more-devices"></div></section>
+  <section class="pan side" id="networks-p"><h3><b data-i18n="networks"></b> <span id="n-net"></span></h3><div class="networks" id="networks"></div>
+    <h4 data-i18n="links"></h4><div class="links-wrap"><table class="links"><tbody id="interfaces"></tbody></table></div></section>
 
-  <section class="pan dns1" id="s-clients"><h3>Qui interroge <span id="total-dns"></span></h3><ul id="clients"></ul></section>
-  <section class="pan dns2" id="s-domaines"><h3>Domaines demandés <span>24 h</span></h3><ul id="domaines"></ul>
-    <details class="attendu"><summary>Trafic attendu <span class="nb" id="n-attendu"></span></summary><ul id="attendu"></ul></details>
-    <p class="doux" id="technique" style="margin:6px 0 0;font-size:12.5px"></p></section>
-  <section class="pan dns3" id="s-nouveaux"><h3>Nouveaux et bloqués <span>24 h</span></h3>
-    <div class="chips" id="onglets" role="tablist"></div><ul id="liste-onglet" role="tabpanel"></ul></section>
+  <section class="pan dns1" id="s-clients"><h3><b data-i18n="who_asks"></b> <span id="total-dns"></span></h3><ul id="clients"></ul></section>
+  <section class="pan dns2" id="s-domains"><h3><b data-i18n="domains_req"></b> <span>24 h</span></h3><ul id="domains"></ul>
+    <details class="expected"><summary><span data-i18n="expected_traffic"></span> <span class="count" id="n-expected"></span></summary><ul id="expected"></ul></details>
+    <p class="muted" id="technical" style="margin:6px 0 0;font-size:12.5px"></p></section>
+  <section class="pan dns3" id="s-new"><h3><b data-i18n="new_blocked"></b> <span>24 h</span></h3>
+    <div class="chips" id="tabs" role="tablist"></div><ul id="tab-list" role="tabpanel"></ul></section>
 
-  <section class="pan" id="pied"><p id="listes"></p></section>
+  <section class="pan" id="footer"><p id="lists"></p></section>
 </div></main>
 
-<dialog id="fiche" aria-labelledby="f-nom">
-  <div class="fiche">
-    <div class="fiche-tete"><div><h3 id="f-nom"></h3><p id="f-ip"></p><p id="f-vu"></p></div><form method="dialog"><button class="fermer" aria-label="Fermer">×</button></form></div>
-    <div class="chiffres" id="f-chiffres"></div>
-    <h4>Requêtes par heure <span>24 h</span></h4><div id="f-h"><div class="mini fb"></div></div>
-    <h4><span id="f-t1" style="color:inherit;font-size:inherit;font-weight:inherit">Domaines demandés</span> <span>24 h</span></h4><ul id="f-domaines"></ul>
-    <h4><span id="f-t2" style="color:inherit;font-size:inherit;font-weight:inherit">Bloqués pour cet appareil</span> <span>24 h</span></h4><ul id="f-bloques"></ul>
+<dialog id="card" aria-labelledby="c-name">
+  <div class="card">
+    <div class="card-head"><div><h3 id="c-name"></h3><p id="c-ip"></p><p id="c-seen"></p></div><form method="dialog"><button class="close" data-i18n-aria="close">×</button></form></div>
+    <div class="figures" id="c-figures"></div>
+    <h4><b data-i18n="queries_per_hour"></b> <span>24 h</span></h4><div id="c-hours"><div class="mini fb"></div></div>
+    <h4><b id="c-t1"></b> <span>24 h</span></h4><ul id="c-domains"></ul>
+    <h4><b id="c-t2"></b> <span>24 h</span></h4><ul id="c-blocked"></ul>
   </div>
 </dialog>
 
 <script>
+// i18n: English by default; "a|b" entries are singular|plural, {0} {1} are arguments
+const D = {
+  en: {
+    search_ph: "Search ( / )", search_aria: "Search a device or a domain", connecting: "Connecting…", lang_switch: "Switch language",
+    k_rx: "Receive", k_tx: "Transmit", k_lat: "Internet latency", k_dev: "Devices online", k_dns: "DNS queries 24 h", k_blk: "Blocked 24 h",
+    wan_traffic: "WAN traffic", period: "Period", per_30d: "30 d", to_watch: "To watch", threats_blocked: "Malicious domains blocked",
+    devices: "Devices", filters: "Filters", th_name: "Name", th_network: "Network", th_rate: "Rate", th_queries: "Queries 24 h", th_blocked: "Blocked", th_seen: "Last seen", th_first: "First seen",
+    networks: "Networks", links: "Links", who_asks: "Who is asking", domains_req: "Domains requested", expected_traffic: "Expected traffic", new_blocked: "New and blocked",
+    close: "Close", queries_per_hour: "Queries per hour", blocked_for_device: "Blocked for this device", subs_req: "Subdomains requested", who_asks_it: "Who asks for it", domain_and_subs: "Domain and subdomains",
+    nothing: "Nothing to report", no_results: "No results", show_more: "Show {0} more", collapse: "Collapse",
+    "w_subdomain": "subdomain|subdomains", "w_other": "other|others", "w_query": "query|queries", "w_ad_blocked": "ad blocked|ads blocked", "w_threat": "threat|threats",
+    "w_expected": "expected|expected", "w_times": "time|times", "w_device": "device|devices", "w_point": "item|items", "w_ad": "ad|ads", "w_lease": "lease|leases",
+    "w_static_ip": "static IP|static IPs", "w_network": "network|networks", "w_error": "error|errors", "w_new_device": "new device|new devices",
+    "w_new_domain": "new domain|new domains", "w_mal_domain": "malicious domain|malicious domains", "w_dev_contacted": "device contacted|devices contacted", "w_new": "new|new",
+    lvl0: "Critical", lvl1: "Warning", lvl2: "Info",
+    svc_down1: "{0} is not running", svc_downN: "{0} are not running", wan_down: "WAN link {0} is down", net_noping: "Internet does not answer ping",
+    dhcp_full: "DHCP range {0} almost full", lists_old: "Blocklists are {0} old", mem_low: "Memory almost full ({0} free)", temp_high: "High temperature: {0} °C",
+    if_errors: "Errors on {0}: +{1} since opening", new_week: "{0} this week",
+    all_calm: "All quiet", watch: "{0} to watch", today: "Today {0}", gateway: "Gateway {0}", of: "of {0}", none_new: "none new", technical_n: "{0} technical",
+    totals: "Today {0} received and {1} sent. This month {2} received and {3} sent.",
+    link_up: "{0} up", link_down: "{0} down", at: " at {0}", no_answer: "no answer", lists: "Lists", ago: "{0} ago", lt1h: "less than 1 h", dd: "{0} d", hh: "{0} h",
+    st_active: "active", st_unknown: "unknown", name_router: "router", lat_Gateway: "Gateway", lat_Internet: "Internet", to: "to {0}",
+    f_online: "Online", f_offline: "Offline", f_new: "New", f_static: "Static IP", n_devices: "{0} online of {1}", shown: " · {0} shown", no_device: "No devices", show_more_dev: "Show {0} more",
+    online: "online", offline: "offline", unnamed: "Unnamed", tag_new: "new", tag_static: "static IP", lease: "DHCP lease", last_seen: "last seen {0}",
+    online_n: "{0} online", dhcp_used: "DHCP {0}% used", no_dhcp: "No DHCP range", down: "down",
+    technical: "Technical traffic (reverse DNS, mDNS, WPAD…): {0}.",
+    none: "None", none_f: "None", nobody: "Nobody", no_queries: "No queries", nothing_blocked: "Nothing blocked",
+    tab_new: "New", tab_ads: "Ads", tab_threats: "Threats", tab_nodns: "No DNS",
+    sys: "Load {0} · free memory {1} of {2}", footer: "Up for {0} d. Blocklists: {1} malicious domains, {2} ad domains, {3} IPs.",
+    updated: "Updated at {0}", unreachable: "Vigie unreachable", stale: "Figures from {0}",
+    first_seen: "First seen {0} · {1}", first_seen_on: "First seen on {0}", ad_label: "advertising", mal_label: "malicious domain",
+    chart_aria: "WAN traffic, peak ↓ {0} ↑ {1}", no_data: "No data yet",
+    u_B: "B", u_K: "KiB", u_M: "MiB", u_G: "GiB",
+  },
+  fr: {
+    search_ph: "Rechercher ( / )", search_aria: "Rechercher un appareil ou un domaine", connecting: "Connexion…", lang_switch: "Changer de langue",
+    k_rx: "Réception", k_tx: "Émission", k_lat: "Latence Internet", k_dev: "Appareils en ligne", k_dns: "Requêtes DNS 24 h", k_blk: "Bloqué 24 h",
+    wan_traffic: "Trafic WAN", period: "Période", per_30d: "30 j", to_watch: "À regarder", threats_blocked: "Domaines malveillants bloqués",
+    devices: "Appareils", filters: "Filtres", th_name: "Nom", th_network: "Réseau", th_rate: "Débit", th_queries: "Req. 24 h", th_blocked: "Bloquées", th_seen: "Dernier vu", th_first: "Premier vu",
+    networks: "Réseaux", links: "Liens", who_asks: "Qui interroge", domains_req: "Domaines demandés", expected_traffic: "Trafic attendu", new_blocked: "Nouveaux et bloqués",
+    close: "Fermer", queries_per_hour: "Requêtes par heure", blocked_for_device: "Bloqués pour cet appareil", subs_req: "Sous-domaines demandés", who_asks_it: "Qui l'interroge", domain_and_subs: "Domaine et sous-domaines",
+    nothing: "Rien à signaler", no_results: "Aucun résultat", show_more: "Voir les {0} autres", collapse: "Réduire",
+    "w_subdomain": "sous-domaine|sous-domaines", "w_other": "autre|autres", "w_query": "requête|requêtes", "w_ad_blocked": "pub bloquée|pubs bloquées", "w_threat": "menace|menaces",
+    "w_expected": "attendue|attendues", "w_times": "fois|fois", "w_device": "appareil|appareils", "w_point": "point|points", "w_ad": "pub|pubs", "w_lease": "bail|baux",
+    "w_static_ip": "IP fixe|IP fixes", "w_network": "réseau|réseaux", "w_error": "erreur|erreurs", "w_new_device": "nouvel appareil|nouveaux appareils",
+    "w_new_domain": "nouveau domaine|nouveaux domaines", "w_mal_domain": "domaine malveillant|domaines malveillants", "w_dev_contacted": "appareil a contacté|appareils ont contacté", "w_new": "nouveau|nouveaux",
+    lvl0: "Critique", lvl1: "Attention", lvl2: "Info",
+    svc_down1: "{0} ne tourne pas", svc_downN: "{0} ne tournent pas", wan_down: "Lien WAN {0} coupé", net_noping: "Internet ne répond pas au ping",
+    dhcp_full: "Plage DHCP {0} presque pleine", lists_old: "Listes de blocage vieilles de {0}", mem_low: "Mémoire presque pleine ({0} libres)", temp_high: "Température élevée : {0} °C",
+    if_errors: "Erreurs sur {0} : +{1} depuis l'ouverture", new_week: "{0} cette semaine",
+    all_calm: "Tout est calme", watch: "{0} à regarder", today: "Aujourd'hui {0}", gateway: "Passerelle {0}", of: "sur {0}", none_new: "aucun nouveau", technical_n: "{0} techniques",
+    totals: "Aujourd'hui {0} reçus et {1} envoyés. Ce mois-ci {2} reçus et {3} envoyés.",
+    link_up: "{0} connecté", link_down: "{0} coupé", at: " à {0}", no_answer: "sans réponse", lists: "Listes", ago: "il y a {0}", lt1h: "moins d'1 h", dd: "{0} j", hh: "{0} h",
+    st_active: "actif", st_unknown: "inconnu", name_router: "routeur", lat_Gateway: "Passerelle", lat_Internet: "Internet", to: "vers {0}",
+    f_online: "En ligne", f_offline: "Hors ligne", f_new: "Nouveaux", f_static: "IP fixe", n_devices: "{0} en ligne sur {1}", shown: " · {0} affichés", no_device: "Aucun appareil", show_more_dev: "Afficher les {0} autres",
+    online: "en ligne", offline: "hors ligne", unnamed: "Sans nom", tag_new: "nouveau", tag_static: "IP fixe", lease: "bail DHCP", last_seen: "dernier vu {0}",
+    online_n: "{0} en ligne", dhcp_used: "DHCP {0} % occupé", no_dhcp: "Pas de plage DHCP", down: "coupé",
+    technical: "Trafic technique (DNS inverse, mDNS, WPAD…) : {0}.",
+    none: "Aucun", none_f: "Aucune", nobody: "Personne", no_queries: "Aucune requête", nothing_blocked: "Rien de bloqué",
+    tab_new: "Nouveaux", tab_ads: "Pubs", tab_threats: "Menaces", tab_nodns: "Sans DNS",
+    sys: "Charge {0} · mémoire libre {1} sur {2}", footer: "En marche depuis {0} j. Listes de blocage : {1} domaines malveillants, {2} domaines de pub, {3} IP.",
+    updated: "À jour à {0}", unreachable: "Vigie injoignable", stale: "Chiffres de {0}",
+    first_seen: "Premier vu {0} · {1}", first_seen_on: "Premier vu le {0}", ad_label: "publicité", mal_label: "domaine malveillant",
+    chart_aria: "Trafic WAN, pic ↓ {0} ↑ {1}", no_data: "Pas encore de données",
+    u_B: "o", u_K: "Kio", u_M: "Mio", u_G: "Gio",
+  },
+};
+const LOC = {en: "en-GB", fr: "fr-FR"};
+let lang = "en";
+try { lang = localStorage.getItem("vigie.lang"); } catch (err) {}
+if (!D[lang]) lang = (navigator.language || "").toLowerCase().startsWith("fr") ? "fr" : "en";
+const t = (k, ...a) => (D[lang][k] ?? D.en[k] ?? k).replace(/\{(\d)\}/g, (_, i) => a[i]);
+const tr = (p, v) => D[lang][p + v] ?? D.en[p + v] ?? v; // server-provided labels (service states, probe names...)
+const plw = (n, k) => t("w_" + k).split("|")[(lang === "fr" ? n > 1 : n !== 1) ? 1 : 0];
+
 const $ = id => document.getElementById(id);
-const fr = (n, d=0) => n.toLocaleString("fr-FR", {minimumFractionDigits:d, maximumFractionDigits:d});
-const nb = n => n == null ? "–" : fr(n);
-const pl = (n, un, plusieurs) => `${fr(n)} ${n > 1 ? plusieurs : un}`;
-const o = n => n == null ? "–" : n < 1024 ? fr(n)+" o" : n < 1048576 ? fr(n/1024,1)+" Kio" : n < 1073741824 ? fr(n/1048576,1)+" Mio" : fr(n/1073741824,2)+" Gio";
-const bp = n => n == null ? ["–", ""] : n*8 < 1e6 ? [fr(n*8/1e3), "kb/s"] : [fr(n*8/1e6,1), "Mb/s"];
-const b = n => bp(n).join(" ");
-const heure = t => new Date(t*1000).toLocaleTimeString("fr-FR");
-const date = t => t ? new Date(t*1000).toLocaleDateString("fr-FR", {day:"numeric", month:"short"}) : "";
+const fmt = (n, d=0) => n.toLocaleString(LOC[lang], {minimumFractionDigits:d, maximumFractionDigits:d});
+const nb = n => n == null ? "–" : fmt(n);
+const pl = (n, k) => `${fmt(n)} ${plw(n, k)}`;
+const bytes = n => n == null ? "–" : n < 1024 ? fmt(n)+" "+t("u_B") : n < 1048576 ? fmt(n/1024,1)+" "+t("u_K") : n < 1073741824 ? fmt(n/1048576,1)+" "+t("u_M") : fmt(n/1073741824,2)+" "+t("u_G");
+const bps = n => n == null ? ["–", ""] : n*8 < 1e6 ? [fmt(n*8/1e3), "kb/s"] : [fmt(n*8/1e6,1), "Mb/s"];
+const rate = n => bps(n).join(" ");
+const timeStr = ts => new Date(ts*1000).toLocaleTimeString(LOC[lang]);
+const dateStr = ts => ts ? new Date(ts*1000).toLocaleDateString(LOC[lang], {day:"numeric", month:"short"}) : "";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const dom = d => esc(d).replaceAll(".", ".<wbr>");
-const qui = x => x.ip ? `<button type="button" class="qui" data-ip="${esc(x.ip)}">${esc(x.nom || x.ip)}</button>` : esc(x.nom || "");
-const qd = d => `<button type="button" class="qui" data-d="${esc(d)}">${dom(d)}</button>`;
+const nm = n => n === "router" ? t("name_router") : n;
+const who = x => x.ip ? `<button type="button" class="who" data-ip="${esc(x.ip)}">${esc(nm(x.name) || x.ip)}</button>` : esc(nm(x.name) || "");
+const domBtn = d => `<button type="button" class="who" data-d="${esc(d)}">${dom(d)}</button>`;
 const ipn = ip => ip ? ip.split(".").reduce((a, c) => a * 256 + +c, 0) : 0;
-// Préférences de l'interface, gardées dans le navigateur (jamais bloquant) ; la recherche n'y est pas
-const ui = {per: "5m", tri: {k: "etat", d: 1}, filt: [], lim: {}, ouv: {}, onglet: "nouv", tout: false, q: ""};
+// UI preferences, kept in the browser (never blocking); the search box is not saved
+const ui = {per: "5m", sort: {k: "state", d: 1}, filt: [], lim: {}, open: {}, tab: "new", all: false, q: ""};
 try { Object.assign(ui, JSON.parse(localStorage.getItem("vigie") || "{}"), {q: ""}); } catch (err) {}
-const sauver = () => { try { localStorage.setItem("vigie", JSON.stringify({...ui, q: undefined})); } catch (err) {} };
-let E = null, lignesApp = [], ouvert = null; // dernier état reçu, lignes du tableau, appareil de la fiche
+if (!PER_OK(ui.per)) ui.per = "5m";
+function PER_OK(p) { return ["5m", "1h", "24h", "30d"].includes(p); }
+const save = () => { try { localStorage.setItem("vigie", JSON.stringify({...ui, q: undefined})); } catch (err) {} };
+let S = null, deviceRows = [], opened = null, cardRefresh = null; // last status received, table rows, device card focus
+let head = () => t("connecting"), upd = () => "";
+const paintHead = () => { $("state").textContent = head(); $("updated").textContent = upd(); };
 
-// Réécrit une zone seulement si elle change, en rendant le focus au bouton qui l'avait
-const CLES = ["f", "plus", "o", "ip", "tt"];
-function poser(id, h) {
+// Rewrites a zone only if it changed, giving focus back to the button that had it
+const KEYS = ["f", "plus", "o", "ip", "tt"];
+function put(id, h) {
   const el = $(id);
   if (el._h === h) return;
-  const a = document.activeElement, cle = el.contains(a) && CLES.find(k => a.dataset[k] != null);
+  const a = document.activeElement, key = el.contains(a) && KEYS.find(k => a.dataset[k] != null);
   el._h = h; el.innerHTML = h;
-  if (cle) el.querySelector(`[data-${cle}="${a.dataset[cle]}"]`)?.focus();
+  if (key) el.querySelector(`[data-${key}="${a.dataset[key]}"]`)?.focus();
 }
-const rech = () => ui.q.trim().toLowerCase();
-// r = {a: texte principal, sous: ligne secondaire, v: valeur à droite, f: part 0..1 pour la barre, t: texte brut (recherche, infobulle)}
-// Sur la page : filtrée par la recherche, 8 lignes puis « Voir les n autres » ; brut = sans filtre ni limite (fiche)
-function liste(id, rows, vide = "Rien à signaler", brut) {
-  const f = brut ? "" : rech(), tous = f ? rows.filter(r => (r.t || "").toLowerCase().includes(f)) : rows;
-  const ouv = brut || ui.lim[id], vus = ouv ? tous : tous.slice(0, 8), reste = tous.length - vus.length;
-  poser(id, tous.length ? vus.map(r => `<li${r.f != null ? ` class="barre" style="--f:${r.f.toFixed(3)}"` : ""}><div class="p une" title="${esc(r.t)}">${r.a}${r.sous ? `<small>${r.sous}</small>` : ""}</div><span class="v">${r.v ?? ""}</span></li>`).join("")
-    + (brut ? "" : reste > 0 ? `<li class="plus"><button data-plus="${id}">Voir les ${fr(reste)} autres</button></li>` : ouv && tous.length > 8 ? `<li class="plus"><button data-plus="${id}">Réduire</button></li>` : "")
-    : `<li class="vide">${f ? "Aucun résultat" : vide}</li>`);
+const search = () => ui.q.trim().toLowerCase();
+// r = {a: main text, sub: secondary line, v: right-hand value, f: share 0..1 for the bar, t: plain text (search, tooltip)}
+// On the page: filtered by the search, 8 rows then "Show n more"; raw = no filter nor limit (card)
+function list(id, rows, empty = t("nothing"), raw) {
+  const f = raw ? "" : search(), all = f ? rows.filter(r => (r.t || "").toLowerCase().includes(f)) : rows;
+  const open = raw || ui.lim[id], shown = open ? all : all.slice(0, 8), rest = all.length - shown.length;
+  put(id, all.length ? shown.map(r => `<li${r.f != null ? ` class="bar" style="--f:${r.f.toFixed(3)}"` : ""}><div class="p one" title="${esc(r.t)}">${r.a}${r.sub ? `<small>${r.sub}</small>` : ""}</div><span class="v">${r.v ?? ""}</span></li>`).join("")
+    + (raw ? "" : rest > 0 ? `<li class="plus"><button data-plus="${id}">${t("show_more", fmt(rest))}</button></li>` : open && all.length > 8 ? `<li class="plus"><button data-plus="${id}">${t("collapse")}</button></li>` : "")
+    : `<li class="empty">${f ? t("no_results") : empty}</li>`);
 }
-const part = (xs, cle) => { const m = Math.max(1, ...xs.map(cle)); return x => cle(x) / m; };
-document.addEventListener("toggle", ev => { const g = ev.target.dataset?.g; if (g) { ev.target.open ? ui.ouv[g] = 1 : delete ui.ouv[g]; sauver(); } }, true);
-function groupes(id, gs, vide, brut) {
-  const f = part(gs, g => g.n);
-  liste(id, gs.map(g => {
-    const cle = id + ":" + g.domaine, reste = g.nb_sous - g.sous.length;
-    const a = g.nb_sous === 1 ? qd(g.sous[0][0])
-      : `<details data-g="${esc(cle)}"${ui.ouv[cle] ? " open" : ""}><summary>${qd(g.domaine)}<span class="nb">${pl(g.nb_sous, "sous-domaine", "sous-domaines")}</span></summary>`
-        + `<ul class="sous">${g.sous.map(([d, n]) => `<li><div class="p">${qd(d)}</div><span class="v">${fr(n)}</span></li>`).join("")}`
-        + `${reste > 0 ? `<li class="vide">et ${pl(reste, "autre", "autres")}</li>` : ""}</ul></details>`;
-    return {a, v: pl(g.n, "requête", "requêtes"), f: f(g), t: g.domaine + " " + g.sous.map(x => x[0]).join(" ")};
-  }), vide, brut);
+const share = (xs, key) => { const m = Math.max(1, ...xs.map(key)); return x => key(x) / m; };
+document.addEventListener("toggle", ev => { const g = ev.target.dataset?.g; if (g) { ev.target.open ? ui.open[g] = 1 : delete ui.open[g]; save(); } }, true);
+function groups(id, gs, empty, raw) {
+  const f = share(gs, g => g.n);
+  list(id, gs.map(g => {
+    const key = id + ":" + g.domain, rest = g.sub_count - g.subs.length;
+    const a = g.sub_count === 1 ? domBtn(g.subs[0][0])
+      : `<details data-g="${esc(key)}"${ui.open[key] ? " open" : ""}><summary>${domBtn(g.domain)}<span class="count">${pl(g.sub_count, "subdomain")}</span></summary>`
+        + `<ul class="subs">${g.subs.map(([d, n]) => `<li><div class="p">${domBtn(d)}</div><span class="v">${fmt(n)}</span></li>`).join("")}`
+        + `${rest > 0 ? `<li class="empty">+ ${pl(rest, "other")}</li>` : ""}</ul></details>`;
+    return {a, v: pl(g.n, "query"), f: f(g), t: g.domain + " " + g.subs.map(x => x[0]).join(" ")};
+  }), empty, raw);
 }
-async function fiche(ip) {
+const cardHead = (title, l1, l2) => { $("c-t1").textContent = t(l1); $("c-t2").textContent = t(l2); $("c-name").textContent = title; };
+async function deviceCard(ip) {
+  cardRefresh = () => deviceCard(ip);
   try {
-    const f = await (await fetch("api/appareil?ip=" + encodeURIComponent(ip))).json(), x = lignesApp.find(l => l.ip === ip) || {};
-    $("f-t1").textContent = "Domaines demandés"; $("f-t2").textContent = "Bloqués pour cet appareil";
-    $("f-nom").textContent = f.nom || x.nom || ip;
-    $("f-ip").textContent = [ip, x.mac, x.reseau, x.fixe ? "IP fixe" : x.bail ? "bail DHCP" : ""].filter(Boolean).join(" · ");
-    $("f-vu").textContent = x.premier || x.vu ? `Premier vu ${date(x.premier)} · ${x.en_ligne ? "en ligne" : "dernier vu " + date(x.vu)}` : "";
-    $("f-chiffres").innerHTML = [[f.requetes_24h, "requête", "requêtes"], [f.pub, "pub bloquée", "pubs bloquées"], [f.menaces, "menace", "menaces"], [f.attendu.n, "attendue", "attendues"]]
-      .map(([n, un, plus]) => `<div><b>${fr(n)}</b><span>${n > 1 ? plus : un}</span></div>`).join("");
-    mini("f-h", f.par_heure, 1);
-    groupes("f-domaines", f.groupes, "Aucune requête", 1);
-    liste("f-bloques", f.bloques.map(x => ({a: x.liste === "menaces" ? `<span class="menace">${dom(x.domaine)}</span>` : dom(x.domaine), t: x.domaine,
-      sous: x.liste === "menaces" ? "domaine malveillant" : "publicité", v: pl(x.n, "fois", "fois")})), "Rien de bloqué", 1);
-    ouvrir(ip);
-  } catch (err) { /* vigie injoignable : l'en-tête le signale déjà */ }
+    const f = await (await fetch("api/device?ip=" + encodeURIComponent(ip))).json(), x = deviceRows.find(l => l.ip === ip) || {};
+    cardHead(nm(f.name) || nm(x.name) || ip, "domains_req", "blocked_for_device");
+    $("c-ip").textContent = [ip, x.mac, x.network, x.fixed ? t("tag_static") : x.lease ? t("lease") : ""].filter(Boolean).join(" · ");
+    $("c-seen").textContent = x.first_seen || x.last_seen ? t("first_seen", dateStr(x.first_seen), x.online ? t("online") : t("last_seen", dateStr(x.last_seen))) : "";
+    $("c-figures").innerHTML = [[f.queries_24h, "query"], [f.ads, "ad_blocked"], [f.threats, "threat"], [f.expected.n, "expected"]]
+      .map(([n, k]) => `<div><b>${fmt(n)}</b><span>${plw(n, k)}</span></div>`).join("");
+    mini("c-hours", f.per_hour, 1);
+    groups("c-domains", f.groups, t("no_queries"), 1);
+    list("c-blocked", f.blocked.map(x => ({a: x.list === "threats" ? `<span class="threat">${dom(x.domain)}</span>` : dom(x.domain), t: x.domain,
+      sub: x.list === "threats" ? t("mal_label") : t("ad_label"), v: pl(x.n, "times")})), t("nothing_blocked"), 1);
+    openCard(ip);
+  } catch (err) { /* vigie unreachable: the header already says so */ }
 }
-function ouvrir(ip) {
-  const d = $("fiche");
+function openCard(ip) {
+  const d = $("card");
   if (d.open) return;
-  ouvert = [document.activeElement, ip];
-  if (matchMedia("(min-width:1100px)").matches) { d.show(); document.body.classList.add("lateral"); } else d.showModal();
+  opened = [document.activeElement, ip];
+  if (matchMedia("(min-width:1100px)").matches) { d.show(); document.body.classList.add("side-panel"); } else d.showModal();
 }
-// Fiche d'un domaine : qui l'interroge, ses sous-domaines, requêtes par heure
-async function fichedom(dm) {
+// Domain card: who asks for it, its subdomains, queries per hour
+async function domainCard(dm) {
+  cardRefresh = () => domainCard(dm);
   try {
-    const f = await (await fetch("api/domaine?d=" + encodeURIComponent(dm))).json();
-    $("f-t1").textContent = "Sous-domaines demandés"; $("f-t2").textContent = "Qui l'interroge";
-    $("f-nom").textContent = f.domaine;
-    $("f-ip").textContent = "Domaine et sous-domaines";
-    $("f-vu").textContent = f.premier ? `Premier vu le ${date(f.premier)}` : "";
-    $("f-chiffres").innerHTML = `<div><b>${fr(f.requetes_24h)}</b><span>${f.requetes_24h > 1 ? "requêtes" : "requête"}</span></div><div><b>${fr(f.clients.length)}</b><span>${f.clients.length > 1 ? "appareils" : "appareil"}</span></div>`;
-    mini("f-h", f.par_heure, 1);
-    liste("f-domaines", f.sous.map(([x, n]) => ({a: dom(x), t: x, v: fr(n)})), "Aucune requête", 1);
-    liste("f-bloques", f.clients.map(x => ({a: qui(x), t: x.ip, v: pl(x.n, "requête", "requêtes")})), "Personne", 1);
-    ouvrir("");
-  } catch (err) { /* idem */ }
+    const f = await (await fetch("api/domain?d=" + encodeURIComponent(dm))).json();
+    cardHead(f.domain, "subs_req", "who_asks_it");
+    $("c-ip").textContent = t("domain_and_subs");
+    $("c-seen").textContent = f.first_seen ? t("first_seen_on", dateStr(f.first_seen)) : "";
+    $("c-figures").innerHTML = `<div><b>${fmt(f.queries_24h)}</b><span>${plw(f.queries_24h, "query")}</span></div><div><b>${fmt(f.clients.length)}</b><span>${plw(f.clients.length, "device")}</span></div>`;
+    mini("c-hours", f.per_hour, 1);
+    list("c-domains", f.subs.map(([x, n]) => ({a: dom(x), t: x, v: fmt(n)})), t("no_queries"), 1);
+    list("c-blocked", f.clients.map(x => ({a: who(x), t: x.ip, v: pl(x.n, "query")})), t("nobody"), 1);
+    openCard("");
+  } catch (err) { /* same */ }
 }
-$("fiche").addEventListener("close", () => { document.body.classList.remove("lateral"); (ouvert[0].isConnected ? ouvert[0] : document.querySelector(`.qui[data-ip="${ouvert[1]}"]`))?.focus(); });
-const calme = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+$("card").addEventListener("close", () => { document.body.classList.remove("side-panel"); (opened[0].isConnected ? opened[0] : document.querySelector(`.who[data-ip="${opened[1]}"]`))?.focus(); });
+const motion = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 document.addEventListener("click", ev => {
-  const t = ev.target, bt = t.closest("button"), al = t.closest(".al a");
-  if (bt?.dataset.d) { ev.preventDefault(); fichedom(bt.dataset.d); }
-  else if (bt?.classList.contains("qui")) fiche(bt.dataset.ip);
-  else if (t === $("fiche")) $("fiche").close();
-  else if (bt?.dataset.plus) { ui.lim[bt.dataset.plus] = !ui.lim[bt.dataset.plus]; sauver(); rendre(); }
-  else if (bt?.dataset.f) { const k = bt.dataset.f; ui.filt = ui.filt.includes(k) ? ui.filt.filter(x => x !== k) : [...ui.filt, k]; sauver(); rendre(); }
-  else if (bt?.dataset.o) { ui.onglet = bt.dataset.o; sauver(); rendre(); }
-  else if (bt?.id === "plus-tout") { ui.tout = !ui.tout; sauver(); rendre(); }
-  else if (bt && bt.parentElement.dataset.k) { const k = bt.parentElement.dataset.k; ui.tri = ui.tri.k === k ? {k, d: -ui.tri.d} : {k, d: ["nom", "ip", "mac", "reseau"].includes(k) ? 1 : -1}; sauver(); rendre(); }
+  const e = ev.target, bt = e.closest("button"), al = e.closest(".alert a");
+  if (bt?.dataset.d) { ev.preventDefault(); domainCard(bt.dataset.d); }
+  else if (bt?.classList.contains("who")) deviceCard(bt.dataset.ip);
+  else if (e === $("card")) $("card").close();
+  else if (bt?.dataset.plus) { ui.lim[bt.dataset.plus] = !ui.lim[bt.dataset.plus]; save(); render(); }
+  else if (bt?.dataset.f) { const k = bt.dataset.f; ui.filt = ui.filt.includes(k) ? ui.filt.filter(x => x !== k) : [...ui.filt, k]; save(); render(); }
+  else if (bt?.dataset.o) { ui.tab = bt.dataset.o; save(); render(); }
+  else if (bt?.id === "more-all") { ui.all = !ui.all; save(); render(); }
+  else if (bt && bt.parentElement.dataset.k) { const k = bt.parentElement.dataset.k; ui.sort = ui.sort.k === k ? {k, d: -ui.sort.d} : {k, d: ["name", "ip", "mac", "network"].includes(k) ? 1 : -1}; save(); render(); }
   else if (al) {
     ev.preventDefault();
-    if (al.dataset.flt) { ui.filt = [al.dataset.flt]; sauver(); rendre(); }
-    $(al.dataset.cible).scrollIntoView({behavior: calme(), block: "start"});
+    if (al.dataset.flt) { ui.filt = [al.dataset.flt]; save(); render(); }
+    $(al.dataset.target).scrollIntoView({behavior: motion(), block: "start"});
   }
 });
-$("q").addEventListener("input", () => { ui.q = $("q").value; rendre(); });
+$("q").addEventListener("input", () => { ui.q = $("q").value; render(); });
 addEventListener("keydown", ev => {
   if (ev.key === "/" && !ev.ctrlKey && !ev.metaKey && !ev.target.closest?.("input,textarea,select")) { ev.preventDefault(); $("q").focus(); }
-  else if (ev.key === "Escape") { if ($("fiche").open) $("fiche").close(); else if (ev.target === $("q")) { $("q").value = ui.q = ""; rendre(); } }
+  else if (ev.key === "Escape") { if ($("card").open) $("card").close(); else if (ev.target === $("q")) { $("q").value = ui.q = ""; render(); } }
 });
 
-// Séries : 1 h à pas de 5 s lue au chargement puis prolongée par /api/etat ; 24 h et 30 j relues au plus toutes les 5 min
-const PER = {"5m": {N: 60, pas: 5}, "1h": {N: 720, pas: 5}, "24h": {N: 1440, pas: 60}, "30j": {N: 30, pas: 86400, barres: 1}};
-const h1 = {rx: [], tx: [], fin: 0}, lat = [], longues = {};
-async function api(p) { try { const r = await fetch("api/historique?p=" + p); return r.ok ? await r.json() : null; } catch (err) { return null; } }
-async function charger1h() {
+// Series: 1 h at 5 s steps read on load then extended by /api/status; 24 h and 30 d re-read at most every 5 min
+const PER = {"5m": {N: 60, step: 5}, "1h": {N: 720, step: 5}, "24h": {N: 1440, step: 60}, "30d": {N: 30, step: 86400, bars: 1}};
+const h1 = {rx: [], tx: [], end: 0}, lat = [], longs = {};
+async function api(p) { try { const r = await fetch("api/history?p=" + p); return r.ok ? await r.json() : null; } catch (err) { return null; } }
+async function load1h() {
   const j = await api("1h");
   if (!j) return;
-  Object.assign(h1, {rx: j.rx || [], tx: j.tx || [], fin: j.fin});
+  Object.assign(h1, {rx: j.rx || [], tx: j.tx || [], end: j.end});
   lat.length = 0;
-  lat.push(...((j.latences || []).find(x => x.nom === "Internet")?.ms || []));
+  lat.push(...((j.latencies || []).find(x => x.name === "Internet")?.ms || []));
 }
-async function chargerLongue(p) {
+async function loadLong(p) {
   const j = await api(p);
-  if (j) longues[p] = {...j, t: Date.now()};
-  tracer();
+  if (j) longs[p] = {...j, t: Date.now()};
+  draw();
 }
-const serie = p => {
-  const c = PER[p], l = longues[p], src = p === "5m" || p === "1h" ? h1 : l || {rx: [], tx: [], fin: Date.now() / 1000};
-  return {...c, rx: src.rx.slice(-c.N), tx: src.tx.slice(-c.N), fin: src.fin};
+const series = p => {
+  const c = PER[p], l = longs[p], src = p === "5m" || p === "1h" ? h1 : l || {rx: [], tx: [], end: Date.now() / 1000};
+  return {...c, rx: src.rx.slice(-c.N), tx: src.tx.slice(-c.N), end: src.end};
 };
 const nice = (v, u = 1) => { v /= u; const e = 10 ** Math.floor(Math.log10(v)), m = v / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e * u; };
-const fr2 = n => n.toLocaleString("fr-FR", {maximumFractionDigits: 2});
-const bits = n => n >= 1e9 ? fr2(n / 1e9) + " Gb/s" : n >= 1e6 ? fr2(n / 1e6) + " Mb/s" : n >= 1e3 ? fr2(n / 1e3) + " kb/s" : fr2(n) + " b/s";
-const octets = n => n >= 2 ** 30 ? fr2(n / 2 ** 30) + " Gio" : n >= 2 ** 20 ? fr2(n / 2 ** 20) + " Mio" : n >= 1024 ? fr2(n / 1024) + " Kio" : fr2(n) + " o";
-const hm = t => new Date(t * 1000).toLocaleTimeString("fr-FR", {hour: "2-digit", minute: "2-digit"});
-const jm = t => new Date(t * 1000).toLocaleDateString("fr-FR", {day: "numeric", month: "short"});
-let courbe = null; // ce que le survol doit lire
-function tracer() {
-  const p = ui.per, s = serie(p), n = s.rx.length, bar = s.barres, k = bar ? 1 : 8, N = s.N;
+const fmt2 = n => n.toLocaleString(LOC[lang], {maximumFractionDigits: 2});
+const bits = n => n >= 1e9 ? fmt2(n / 1e9) + " Gb/s" : n >= 1e6 ? fmt2(n / 1e6) + " Mb/s" : n >= 1e3 ? fmt2(n / 1e3) + " kb/s" : fmt2(n) + " b/s";
+const octets = n => n >= 2 ** 30 ? fmt2(n / 2 ** 30) + " " + t("u_G") : n >= 2 ** 20 ? fmt2(n / 2 ** 20) + " " + t("u_M") : n >= 1024 ? fmt2(n / 1024) + " " + t("u_K") : fmt2(n) + " " + t("u_B");
+const hm = ts => new Date(ts * 1000).toLocaleTimeString(LOC[lang], {hour: "2-digit", minute: "2-digit"});
+const dayMonth = ts => new Date(ts * 1000).toLocaleDateString(LOC[lang], {day: "numeric", month: "short"});
+let curve = null; // what the hover must read
+function draw() {
+  const p = ui.per, s = series(p), n = s.rx.length, bar = s.bars, k = bar ? 1 : 8, N = s.N;
   const mx = Math.max(bar ? 3 * 2 ** 20 : 3e3, Math.max(0, ...s.rx, ...s.tx) * k) / 3, top = nice(mx, bar ? 1024 ** Math.max(0, Math.floor(Math.log(mx) / Math.log(1024))) : 1) * 3;
   const X = i => (N - n + i) / (bar ? N : N - 1) * 1000, Y = v => (100 - Math.min(v * k / top, 1) * 100).toFixed(1);
-  const ligne = a => a.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v)}`).join("");
-  $("grille").setAttribute("d", [1, 2, 3].map(j => `M0,${(100 - j * 100 / 3).toFixed(1)}L1000,${(100 - j * 100 / 3).toFixed(1)}`).join("") + "M0,100L1000,100");
-  $("ligne-rx").setAttribute("d", bar || !n ? "" : ligne(s.rx));
-  $("ligne-tx").setAttribute("d", bar || !n ? "" : ligne(s.tx));
-  $("aire").setAttribute("d", bar || n < 2 ? "" : `${ligne(s.rx)}L${X(n - 1).toFixed(1)},100L${X(0).toFixed(1)},100Z`);
+  const line = a => a.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v)}`).join("");
+  $("gridlines").setAttribute("d", [1, 2, 3].map(j => `M0,${(100 - j * 100 / 3).toFixed(1)}L1000,${(100 - j * 100 / 3).toFixed(1)}`).join("") + "M0,100L1000,100");
+  $("line-rx").setAttribute("d", bar || !n ? "" : line(s.rx));
+  $("line-tx").setAttribute("d", bar || !n ? "" : line(s.tx));
+  $("area").setAttribute("d", bar || n < 2 ? "" : `${line(s.rx)}L${X(n - 1).toFixed(1)},100L${X(0).toFixed(1)},100Z`);
   const w = 1000 / N;
-  $("barres").innerHTML = bar ? s.rx.map((v, i) => `<rect class="br" x="${(X(i) + w * .08).toFixed(1)}" y="${Y(v)}" width="${(w * .38).toFixed(1)}" height="${(100 - Y(v)).toFixed(1)}"/>`
+  $("bars").innerHTML = bar ? s.rx.map((v, i) => `<rect class="br" x="${(X(i) + w * .08).toFixed(1)}" y="${Y(v)}" width="${(w * .38).toFixed(1)}" height="${(100 - Y(v)).toFixed(1)}"/>`
     + `<rect class="bt" x="${(X(i) + w * .46).toFixed(1)}" y="${Y(s.tx[i])}" width="${(w * .38).toFixed(1)}" height="${(100 - Y(s.tx[i])).toFixed(1)}"/>`).join("") : "";
   const f = bar ? octets : bits;
   $("ys").innerHTML = [1, 2, 3].map(j => `<span style="top:${(100 - j * 100 / 3).toFixed(1)}%">${f(top / 3 * j)}</span>`).join("");
-  const T = i => s.fin - (N - 1 - i) * s.pas, fmt = bar ? jm : hm;
-  $("xs").innerHTML = n ? `<span>${fmt(T(0))}</span><span>${fmt(T((N - 1) / 2))}</span><span>${fmt(s.fin)}</span>` : "";
-  $("graphe").setAttribute("aria-label", n ? `Trafic WAN, pic ↓ ${bar ? octets(Math.max(...s.rx)) : bits(Math.max(...s.rx) * 8)} ↑ ${bar ? octets(Math.max(...s.tx)) : bits(Math.max(...s.tx) * 8)}` : "Pas encore de données");
-  courbe = {s, n, N, bar, T};
+  const T = i => s.end - (N - 1 - i) * s.step, tf = bar ? dayMonth : hm;
+  $("xs").innerHTML = n ? `<span>${tf(T(0))}</span><span>${tf(T((N - 1) / 2))}</span><span>${tf(s.end)}</span>` : "";
+  $("chart").setAttribute("aria-label", n ? t("chart_aria", bar ? octets(Math.max(...s.rx)) : bits(Math.max(...s.rx) * 8), bar ? octets(Math.max(...s.tx)) : bits(Math.max(...s.tx) * 8)) : t("no_data"));
+  curve = {s, n, N, bar, T};
   document.querySelectorAll(".per button").forEach(x => x.setAttribute("aria-pressed", x.dataset.p === p));
 }
-function survol(ev) {
-  if (!courbe || !courbe.n) return;
-  const {s, n, N, bar, T} = courbe, r = $("graphe").getBoundingClientRect(), fr_ = Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1);
-  const i = Math.round(bar ? fr_ * N - .5 : fr_ * (N - 1)) - (N - n);
-  if (i < 0 || i >= n) return void ($("guide").hidden = $("bulle").hidden = true);
+function hover(ev) {
+  if (!curve || !curve.n) return;
+  const {s, n, N, bar, T} = curve, r = $("chart").getBoundingClientRect(), frac = Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1);
+  const i = Math.round(bar ? frac * N - .5 : frac * (N - 1)) - (N - n);
+  if (i < 0 || i >= n) return void ($("guide").hidden = $("tip").hidden = true);
   const pos = (N - n + i + (bar ? .5 : 0)) / (bar ? N : N - 1) * 100;
   $("guide").style.left = pos + "%"; $("guide").hidden = false;
-  const bu = $("bulle");
-  bu.innerHTML = `<b>${(bar ? jm : hm)(T(i))}</b><br>↓ ${bar ? octets(s.rx[i]) : b(s.rx[i])} · ↑ ${bar ? octets(s.tx[i]) : b(s.tx[i])}`;
-  bu.hidden = false;
-  bu.style.left = pos + "%"; bu.style.transform = pos > 60 ? "translateX(calc(-100% - 8px))" : "translateX(8px)";
+  const tip = $("tip");
+  tip.innerHTML = `<b>${(bar ? dayMonth : hm)(T(i))}</b><br>↓ ${bar ? octets(s.rx[i]) : rate(s.rx[i])} · ↑ ${bar ? octets(s.tx[i]) : rate(s.tx[i])}`;
+  tip.hidden = false;
+  tip.style.left = pos + "%"; tip.style.transform = pos > 60 ? "translateX(calc(-100% - 8px))" : "translateX(8px)";
 }
-$("graphe").addEventListener("pointermove", survol);
-$("graphe").addEventListener("pointerleave", () => $("guide").hidden = $("bulle").hidden = true);
-$("trafic").addEventListener("click", ev => {
+$("chart").addEventListener("pointermove", hover);
+$("chart").addEventListener("pointerleave", () => $("guide").hidden = $("tip").hidden = true);
+$("traffic").addEventListener("click", ev => {
   const p = ev.target.closest("button[data-p]")?.dataset.p;
   if (!p) return;
-  ui.per = p; sauver(); tracer();
-  const l = longues[p];
-  if (PER[p].pas > 5 && (!l || Date.now() - l.t > 3e5)) chargerLongue(p);
+  ui.per = p; save(); draw();
+  const l = longs[p];
+  if (PER[p].step > 5 && (!l || Date.now() - l.t > 3e5)) loadLong(p);
 });
-// Mini-courbes (valeurs nulles = trou) et barres, sans axes
+// Mini curves (null values = gap) and bars, without axes
 function mini(id, v, bar) {
   const el = $(id).querySelector(".mini"), n = v.length, m = Math.max(1e-9, ...v.filter(x => x != null));
   if (!n) return void (el.innerHTML = "");
@@ -470,162 +553,179 @@ function mini(id, v, bar) {
   else { let d = "", up = 0; v.forEach((x, i) => { if (x == null) up = 0; else { d += `${up ? "L" : "M"}${(i * 100 / Math.max(n - 1, 1)).toFixed(1)},${(27 - x / m * 26).toFixed(1)}`; up = 1; } }); h = `<path d="${d}"/>`; }
   el.innerHTML = `<svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">${h}</svg>`;
 }
-const tuile = (id, val, sous) => { const t = $(id); t.querySelector("b").innerHTML = val; t.querySelector("p").textContent = sous; };
-const vitesse = v => v == null ? "" : v >= 1000 ? `${fr(v/1000)} Gb/s` : `${fr(v)} Mb/s`;
-const NIV = ["Critique", "Attention", "Info"];
-let err0 = null; // erreurs d'interface à l'ouverture de la page
+const tile = (id, val, sub) => { const e = $(id); e.querySelector("b").innerHTML = val; e.querySelector("p").textContent = sub; };
+const speed = v => v == null ? "" : v >= 1000 ? `${fmt(v/1000)} Gb/s` : `${fmt(v)} Mb/s`;
+const LEVELS = ["lvl0", "lvl1", "lvl2"];
+let err0 = null; // interface errors when the page was opened
+const lat_ = x => esc(tr("lat_", x)); // probe name as displayed
 
-// Alertes à trois niveaux : [niveau, texte, cible, filtre du tableau]
-function alertes(e) {
-  const s = e.systeme, sante = e.sante, w = e.interfaces[e.wan] || {}, al = [];
-  const enPanne = sante.services.filter(x => x.etat !== "active");
-  if (enPanne.length) al.push([0, `${enPanne.map(x => esc(x.nom)).join(", ")} ${enPanne.length > 1 ? "ne tournent pas" : "ne tourne pas"}`, "alertes-p"]);
-  if (w.etat && w.etat !== "up") al.push([0, `Lien WAN ${esc(e.wan)} coupé`, "trafic"]);
-  const net = sante.latences.filter(x => x.nom === "Internet");
-  if (net.length && net.every(x => x.ms == null)) al.push([0, "Internet ne répond pas au ping", "alertes-p"]);
-  const m = e.dns.menaces;
-  if (m.length) al.push([0, `${pl(new Set(m.map(x => x.ip)).size, "appareil a", "appareils ont")} contacté ${pl(new Set(m.map(x => x.domaine)).size, "domaine malveillant", "domaines malveillants")}`, "s-menaces"]);
-  for (const r of e.reseaux) if (r.plage && r.baux / r.plage.taille >= .9) al.push([1, `Plage DHCP ${esc(r.nom || r.cidr)} presque pleine`, "appareils", "res:" + (r.nom || r.cidr)]);
-  const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
-  if (age != null && age > 48) al.push([1, `Listes de blocage vieilles de ${fr(age / 24)} j`, "alertes-p"]);
-  if (s.memoire.totale && s.memoire.dispo / s.memoire.totale < .1) al.push([1, `Mémoire presque pleine (${o(s.memoire.dispo)} libres)`, "pied"]);
-  if (s.temperature > 75) al.push([1, `Température élevée : ${fr(s.temperature)} °C`, "pied"]);
-  err0 ??= Object.fromEntries(Object.entries(e.interfaces).map(([i, x]) => [i, x.erreurs]));
-  for (const [i, x] of Object.entries(e.interfaces)) if (x.erreurs > (err0[i] ?? x.erreurs)) al.push([1, `Erreurs sur ${esc(i)} : +${fr(x.erreurs - err0[i])} depuis l'ouverture`, "reseaux-p"]);
-  const nv = e.appareils.filter(x => x.nouveau).length;
-  if (nv) al.push([2, `${pl(nv, "nouvel appareil", "nouveaux appareils")} cette semaine`, "appareils", "nouv"]);
+// Alerts on three levels: [level, text, target, device-table filter]
+function alerts(e) {
+  const s = e.system, health = e.health, w = e.interfaces[e.wan] || {}, al = [];
+  const down = health.services.filter(x => x.state !== "active");
+  if (down.length) al.push([0, t(down.length > 1 ? "svc_downN" : "svc_down1", down.map(x => esc(x.name)).join(", ")), "alerts-p"]);
+  if (w.state && w.state !== "up") al.push([0, t("wan_down", esc(e.wan)), "traffic"]);
+  const net = health.latencies.filter(x => x.name === "Internet");
+  if (net.length && net.every(x => x.ms == null)) al.push([0, t("net_noping"), "alerts-p"]);
+  const m = e.dns.threats;
+  if (m.length) al.push([0, `${pl(new Set(m.map(x => x.ip)).size, "dev_contacted")} ${pl(new Set(m.map(x => x.domain)).size, "mal_domain")}`, "s-threats"]);
+  for (const r of e.networks) if (r.range && r.leases / r.range.size >= .9) al.push([1, t("dhcp_full", esc(r.name || r.cidr)), "devices", "net:" + (r.name || r.cidr)]);
+  const age = health.lists_updated ? (e.now - health.lists_updated) / 3600 : null;
+  if (age != null && age > 48) al.push([1, t("lists_old", t("dd", fmt(age / 24))), "alerts-p"]);
+  if (s.memory.total && s.memory.available / s.memory.total < .1) al.push([1, t("mem_low", bytes(s.memory.available)), "footer"]);
+  if (s.temperature > 75) al.push([1, t("temp_high", fmt(s.temperature)), "footer"]);
+  err0 ??= Object.fromEntries(Object.entries(e.interfaces).map(([i, x]) => [i, x.errors]));
+  for (const [i, x] of Object.entries(e.interfaces)) if (x.errors > (err0[i] ?? x.errors)) al.push([1, t("if_errors", esc(i), fmt(x.errors - err0[i])), "networks-p"]);
+  const nv = e.devices.filter(x => x.is_new).length;
+  if (nv) al.push([2, t("new_week", pl(nv, "new_device")), "devices", "new"]);
   return al.sort((a, c) => a[0] - c[0]);
 }
 
-// Baux et IP fixes fusionnés en un seul tableau
-function lignes(e) {
-  const macs = new Set(e.appareils.map(a => a.mac.toLowerCase()));
-  const nomMac = Object.fromEntries(e.appareils.filter(x => x.nom).map(x => [x.mac.toLowerCase(), x.nom]));
-  return [...e.appareils, ...e.ip_fixes.filter(x => !macs.has(x.mac.toLowerCase())).map(x => ({...x, nom: x.nom || nomMac[x.mac], en_ligne: true, fixe: true}))];
+// Leases and static IPs merged into a single table
+function rows(e) {
+  const macs = new Set(e.devices.map(a => a.mac.toLowerCase()));
+  const macName = Object.fromEntries(e.devices.filter(x => x.name).map(x => [x.mac.toLowerCase(), x.name]));
+  return [...e.devices, ...e.static_ips.filter(x => !macs.has(x.mac.toLowerCase())).map(x => ({...x, name: x.name || macName[x.mac], online: true, fixed: true}))];
 }
-const COL = {nom: x => (x.nom || "~").toLowerCase(), ip: x => ipn(x.ip), mac: x => x.mac || "", reseau: x => x.reseau || "", debit: x => x.debit || 0,
-  requetes: x => x.requetes || 0, bloques: x => x.bloques || 0, vu: x => x.en_ligne ? Infinity : x.vu || 0, premier: x => x.premier || 0};
-const FILT = {en: x => x.en_ligne, hors: x => !x.en_ligne, nouv: x => x.nouveau, fixe: x => x.fixe};
-const trier = ls => {
-  const {k, d} = ui.tri, f = COL[k];
+const COL = {name: x => (nm(x.name) || "~").toLowerCase(), ip: x => ipn(x.ip), mac: x => x.mac || "", network: x => x.network || "", rate: x => x.rate || 0,
+  queries: x => x.queries || 0, blocked: x => x.blocked || 0, seen: x => x.online ? Infinity : x.last_seen || 0, first: x => x.first_seen || 0};
+const FILT = {online: x => x.online, offline: x => !x.online, new: x => x.is_new, static: x => x.fixed};
+const sortRows = ls => {
+  const {k, d} = ui.sort, f = COL[k];
   return [...ls].sort(f ? (a, c) => (f(a) < f(c) ? -1 : f(a) > f(c) ? 1 : 0) * d || ipn(a.ip) - ipn(c.ip)
-    : (a, c) => (c.en_ligne - a.en_ligne) || (c.nouveau - a.nouveau) || ipn(a.ip) - ipn(c.ip));
+    : (a, c) => (c.online - a.online) || (c.is_new - a.is_new) || ipn(a.ip) - ipn(c.ip));
 };
-const ligneTab = x => `<tr><td class="nom"><i class="pt ${x.en_ligne ? "ok" : ""}"></i><span class="sr">${x.en_ligne ? "en ligne" : "hors ligne"}</span>${x.ip ? qui({ip: x.ip, nom: x.nom || "Sans nom"}) : esc(x.nom || "Sans nom")}`
-  + `${x.nouveau ? ' <span class="tag">nouveau</span>' : ""}${x.fixe ? ' <span class="tag">IP fixe</span>' : ""}</td>`
-  + `<td class="ip mono">${esc(x.ip)}</td><td class="m mono">${esc(x.mac)}</td><td class="r">${esc(x.reseau)}</td>`
-  + `<td class="num d">${x.debit > 0 ? b(x.debit) : "–"}</td><td class="num q">${nb(x.requetes)}</td><td class="num b">${nb(x.bloques)}</td>`
-  + `<td class="num vu">${x.en_ligne ? "en ligne" : date(x.vu)}</td><td class="num m">${date(x.premier)}</td></tr>`;
+const tableRow = x => `<tr><td class="name"><i class="pt ${x.online ? "ok" : ""}"></i><span class="sr">${x.online ? t("online") : t("offline")}</span>${x.ip ? who({ip: x.ip, name: x.name || t("unnamed")}) : esc(nm(x.name) || t("unnamed"))}`
+  + `${x.is_new ? ` <span class="tag">${t("tag_new")}</span>` : ""}${x.fixed ? ` <span class="tag">${t("tag_static")}</span>` : ""}</td>`
+  + `<td class="ip mono">${esc(x.ip)}</td><td class="m mono">${esc(x.mac)}</td><td class="nw">${esc(x.network)}</td>`
+  + `<td class="num d">${x.rate > 0 ? rate(x.rate) : "–"}</td><td class="num q">${nb(x.queries)}</td><td class="num b">${nb(x.blocked)}</td>`
+  + `<td class="num seen">${x.online ? t("online") : dateStr(x.last_seen)}</td><td class="num m">${dateStr(x.first_seen)}</td></tr>`;
 
-// Tout ce qui se calcule depuis le dernier état : rappelé aussi quand l'utilisateur trie, filtre ou cherche
-function rendre() {
-  if (!E) return;
-  const e = E, s = e.systeme, w = e.interfaces[e.wan] || {}, sante = e.sante, d = e.dns, h = e.historique_wan, f = rech();
-  const al = alertes(e), grave = al.filter(a => a[0] < 2).length;
-  $("phare").className = "phare " + (al.some(a => a[0] === 0) ? "critique" : grave ? "attention" : "calme");
-  $("etat").textContent = grave ? `${pl(grave, "point", "points")} à regarder` : "Tout est calme";
-  $("n-alertes").textContent = al.length ? fr(al.length) : "";
-  poser("alertes", al.length ? al.map(([n, t, c, fl]) => `<li class="al n${n}"><span class="niv">${NIV[n]}</span><a href="#${c}" data-cible="${c}" data-flt="${esc(fl)}">${t}</a></li>`).join("") : `<li class="vide">Rien à signaler</li>`);
+// Everything computed from the last status: also called when the user sorts, filters or searches
+function render() {
+  if (!S) return;
+  const e = S, s = e.system, w = e.interfaces[e.wan] || {}, health = e.health, d = e.dns, h = e.wan_totals, f = search();
+  const al = alerts(e), grave = al.filter(a => a[0] < 2).length;
+  $("beacon").className = "beacon " + (al.some(a => a[0] === 0) ? "crit" : grave ? "warn" : "calm");
+  head = () => grave ? t("watch", pl(grave, "point")) : t("all_calm"); paintHead();
+  $("n-alerts").textContent = al.length ? fmt(al.length) : "";
+  put("alerts", al.length ? al.map(([n, tx, c, fl]) => `<li class="alert n${n}"><span class="lvl">${t(LEVELS[n])}</span><a href="#${c}" data-target="${c}" data-flt="${esc(fl)}">${tx}</a></li>`).join("") : `<li class="empty">${t("nothing")}</li>`);
 
-  lignesApp = lignes(e);
-  const enLigne = lignesApp.filter(x => x.en_ligne).length;
-  const [rx, urx] = bp(w.rx), [tx, utx] = bp(w.tx), net = sante.latences.find(x => x.nom === "Internet"), pass = sante.latences.find(x => x.nom === "Passerelle");
-  const ms = x => x && x.ms != null ? fr(x.ms, x.ms < 10 ? 1 : 0) : "–";
-  const bloq = d.bloques_24h.pub + d.bloques_24h.menaces, nvx = e.appareils.filter(x => x.nouveau).length;
-  tuile("k-rx", `${rx}<small>${urx}</small>`, h ? `Aujourd'hui ${o(h.jour.rx)}` : "");
-  tuile("k-tx", `${tx}<small>${utx}</small>`, h ? `Aujourd'hui ${o(h.jour.tx)}` : "");
-  tuile("k-lat", `${ms(net)}<small>${net && net.ms != null ? "ms" : ""}</small>`, pass ? `Passerelle ${ms(pass)}${pass.ms != null ? " ms" : ""}` : "");
-  tuile("k-app", `${fr(enLigne)}<small>sur ${fr(lignesApp.length)}</small>`, nvx ? `+${fr(nvx)} ${nvx > 1 ? "nouveaux" : "nouveau"}` : "aucun nouveau");
-  tuile("k-dns", fr(d.requetes_24h), `${fr(d.technique.n)} techniques`);
-  tuile("k-blo", `${fr(d.requetes_24h ? bloq * 100 / d.requetes_24h : 0, 1)}<small>%</small>`, `${pl(d.bloques_24h.pub, "pub", "pubs")}, ${pl(d.bloques_24h.menaces, "menace", "menaces")}`);
-  mini("k-rx", h1.rx.slice(-60)); mini("k-tx", h1.tx.slice(-60)); mini("k-lat", lat); mini("k-dns", d.par_heure.requetes, 1);
+  deviceRows = rows(e);
+  const online = deviceRows.filter(x => x.online).length;
+  const [rx, urx] = bps(w.rx), [tx, utx] = bps(w.tx), net = health.latencies.find(x => x.name === "Internet"), gw = health.latencies.find(x => x.name === "Gateway");
+  const ms = x => x && x.ms != null ? fmt(x.ms, x.ms < 10 ? 1 : 0) : "–";
+  const blocked = d.blocked_24h.ads + d.blocked_24h.threats, newN = e.devices.filter(x => x.is_new).length;
+  tile("k-rx", `${rx}<small>${urx}</small>`, h ? t("today", bytes(h.day.rx)) : "");
+  tile("k-tx", `${tx}<small>${utx}</small>`, h ? t("today", bytes(h.day.tx)) : "");
+  tile("k-lat", `${ms(net)}<small>${net && net.ms != null ? "ms" : ""}</small>`, gw ? t("gateway", ms(gw) + (gw.ms != null ? " ms" : "")) : "");
+  tile("k-dev", `${fmt(online)}<small>${t("of", fmt(deviceRows.length))}</small>`, newN ? `+${fmt(newN)} ${plw(newN, "new")}` : t("none_new"));
+  tile("k-dns", fmt(d.queries_24h), t("technical_n", fmt(d.technical.n)));
+  tile("k-blk", `${fmt(d.queries_24h ? blocked * 100 / d.queries_24h : 0, 1)}<small>%</small>`, `${pl(d.blocked_24h.ads, "ad")}, ${pl(d.blocked_24h.threats, "threat")}`);
+  mini("k-rx", h1.rx.slice(-60)); mini("k-tx", h1.tx.slice(-60)); mini("k-lat", lat); mini("k-dns", d.per_hour.queries, 1);
 
-  $("cumul").textContent = h ? `Aujourd'hui ${o(h.jour.rx)} reçus et ${o(h.jour.tx)} envoyés. Ce mois-ci ${o(h.mois.rx)} reçus et ${o(h.mois.tx)} envoyés.` : "";
-  $("lien-wan").textContent = `${e.wan} ${w.etat === "up" ? "connecté" : "coupé"}${w.vitesse ? " à " + vitesse(w.vitesse) : ""}`;
-  const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
-  poser("sante", [
-    ...sante.latences.map(x => `<div class="indic"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${esc(x.nom)} <span>${x.ms == null ? "sans réponse" : ms(x) + " ms"}</span></div>`),
-    ...sante.services.map(x => `<div class="indic"><i class="pt ${x.etat === "active" ? "ok" : "ko"}"></i>${esc(x.nom)} <span>${x.etat === "active" ? "actif" : esc(x.etat)}</span></div>`),
-    age == null ? "" : `<div class="indic"><i class="pt ${age < 48 ? "ok" : "att"}"></i>Listes <span>il y a ${age < 1 ? "moins d'1 h" : age < 48 ? fr(age) + " h" : fr(age / 24) + " j"}</span></div>`,
+  $("totals").textContent = h ? t("totals", bytes(h.day.rx), bytes(h.day.tx), bytes(h.month.rx), bytes(h.month.tx)) : "";
+  $("wan-link").textContent = t(w.state === "up" ? "link_up" : "link_down", e.wan) + (w.speed ? t("at", speed(w.speed)) : "");
+  const age = health.lists_updated ? (e.now - health.lists_updated) / 3600 : null;
+  put("health", [
+    ...health.latencies.map(x => `<div class="indicator"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${lat_(x.name)} <span>${x.ms == null ? t("no_answer") : ms(x) + " ms"}</span></div>`),
+    ...health.services.map(x => `<div class="indicator"><i class="pt ${x.state === "active" ? "ok" : "ko"}"></i>${esc(x.name)} <span>${esc(tr("st_", x.state))}</span></div>`),
+    age == null ? "" : `<div class="indicator"><i class="pt ${age < 48 ? "ok" : "att"}"></i>${t("lists")} <span>${t("ago", age < 1 ? t("lt1h") : age < 48 ? t("hh", fmt(age)) : t("dd", fmt(age / 24)))}</span></div>`,
   ].join(""));
 
-  const rowMen = d.menaces.map(x => ({a: `<span class="menace">${qd(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes"), t: `${x.domaine} ${x.nom || ""} ${x.ip}`}));
-  const rowSans = e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu), t: `${x.nom || ""} ${x.ip} ${x.vers}`}));
-  $("s-menaces").hidden = !d.menaces.length; liste("menaces", rowMen);
-  
+  const rowThreat = d.threats.map(x => ({a: `<span class="threat">${domBtn(x.domain)}</span>`, sub: who(x), v: pl(x.n, "query"), t: `${x.domain} ${x.name || ""} ${x.ip}`}));
+  const rowNoDns = e.no_dns.map(x => ({a: who(x), sub: t("to", esc(x.to)), v: timeStr(x.seen), t: `${x.name || ""} ${x.ip} ${x.to}`}));
+  $("s-threats").hidden = !d.threats.length; list("threats", rowThreat);
 
-  // tableau des appareils : filtres, tri, 15 lignes puis « Afficher les n autres »
-  const st = ui.filt.filter(k => FILT[k]), rs = ui.filt.filter(k => k.startsWith("res:")).map(k => k.slice(4));
-  const vus = trier(lignesApp.filter(x => st.every(k => FILT[k](x)) && (!rs.length || rs.includes(x.reseau)) && (!f || [x.nom, x.ip, x.mac].join(" ").toLowerCase().includes(f))));
+  // device table: filters, sort, 15 rows then "Show n more"
+  const st = ui.filt.filter(k => FILT[k]), ns = ui.filt.filter(k => k.startsWith("net:")).map(k => k.slice(4));
+  const seen = sortRows(deviceRows.filter(x => st.every(k => FILT[k](x)) && (!ns.length || ns.includes(x.network)) && (!f || [x.name, x.ip, x.mac].join(" ").toLowerCase().includes(f))));
   const pf = k => `<button data-f="${k}" aria-pressed="${ui.filt.includes(k)}">`;
-  poser("chips", [["en", "En ligne"], ["hors", "Hors ligne"], ["nouv", "Nouveaux"], ["fixe", "IP fixe"]].map(([k, t]) => `${pf(k)}${t}</button>`).join("")
-    + [...new Set(lignesApp.map(x => x.reseau).filter(Boolean))].sort().map(r => `${pf("res:" + r)}${esc(r)}</button>`).join(""));
-  $("n-appareils").textContent = `${fr(enLigne)} en ligne sur ${fr(lignesApp.length)}${vus.length < lignesApp.length ? ` · ${fr(vus.length)} affichés` : ""}`;
-  const aff = ui.tout ? vus : vus.slice(0, 15);
-  poser("tb", aff.map(ligneTab).join("") || `<tr><td class="doux">${lignesApp.length ? "Aucun résultat" : "Aucun appareil"}</td></tr>`);
-  poser("plus-app", vus.length > 15 ? `<button id="plus-tout" data-tt="1">${ui.tout ? "Réduire" : `Afficher les ${fr(vus.length - 15)} autres`}</button>` : "");
-  document.querySelectorAll("th[data-k]").forEach(th => th.setAttribute("aria-sort", th.dataset.k !== ui.tri.k ? "none" : ui.tri.d > 0 ? "ascending" : "descending"));
+  put("chips", [["online", "f_online"], ["offline", "f_offline"], ["new", "f_new"], ["static", "f_static"]].map(([k, l]) => `${pf(k)}${t(l)}</button>`).join("")
+    + [...new Set(deviceRows.map(x => x.network).filter(Boolean))].sort().map(r => `${pf("net:" + r)}${esc(r)}</button>`).join(""));
+  $("n-devices").textContent = t("n_devices", fmt(online), fmt(deviceRows.length)) + (seen.length < deviceRows.length ? t("shown", fmt(seen.length)) : "");
+  const shown = ui.all ? seen : seen.slice(0, 15);
+  put("tb", shown.map(tableRow).join("") || `<tr><td class="muted">${deviceRows.length ? t("no_results") : t("no_device")}</td></tr>`);
+  put("more-devices", seen.length > 15 ? `<button id="more-all" data-tt="1">${ui.all ? t("collapse") : t("show_more_dev", fmt(seen.length - 15))}</button>` : "");
+  document.querySelectorAll("th[data-k]").forEach(th => th.setAttribute("aria-sort", th.dataset.k !== ui.sort.k ? "none" : ui.sort.d > 0 ? "ascending" : "descending"));
 
-  $("n-res").textContent = pl(e.reseaux.length, "réseau", "réseaux");
-  poser("reseaux", e.reseaux.map(r => {
-    const l = e.interfaces[r.interface] || {}, p = r.plage ? r.baux / r.plage.taille : 0;
-    return `<div class="res"><h4>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : ""}" title="${esc(l.etat || "inconnu")}"></i></h4>
-      <p class="mono">${esc(r.cidr)}${l.vitesse ? ` · ${vitesse(l.vitesse)}` : ""}</p>
-      <p>${fr(r.en_ligne)} en ligne · ${pl(r.baux, "bail", "baux")} · ${pl(r.ip_fixes, "IP fixe", "IP fixes")}</p>
-      ${r.plage ? `<div class="jauge${p >= .9 ? " pleine" : ""}" style="--f:${Math.min(p, 1).toFixed(3)}"><i></i></div><p>DHCP ${fr(Math.round(p * 100))} % occupé</p>` : "<p>Pas de plage DHCP</p>"}</div>`;
+  $("n-net").textContent = pl(e.networks.length, "network");
+  put("networks", e.networks.map(r => {
+    const l = e.interfaces[r.interface] || {}, p = r.range ? r.leases / r.range.size : 0;
+    return `<div class="netcard"><h4>${esc(r.name || r.cidr)}<i class="pt ${l.state === "up" ? "ok" : ""}" title="${esc(tr("st_", l.state || "unknown"))}"></i></h4>
+      <p class="mono">${esc(r.cidr)}${l.speed ? ` · ${speed(l.speed)}` : ""}</p>
+      <p>${t("online_n", fmt(r.online))} · ${pl(r.leases, "lease")} · ${pl(r.static_ips, "static_ip")}</p>
+      ${r.range ? `<div class="gauge${p >= .9 ? " full" : ""}" style="--f:${Math.min(p, 1).toFixed(3)}"><i></i></div><p>${t("dhcp_used", fmt(Math.round(p * 100)))}</p>` : `<p>${t("no_dhcp")}</p>`}</div>`;
   }).join(""));
-  poser("interfaces", Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.etat === "up" ? "ok" : x.etat === "down" && i === e.wan ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(x.etat)}</span></td>`
-    + `<td class="num">${x.vitesse ? vitesse(x.vitesse) : x.etat === "down" ? "coupé" : ""}</td><td class="num">↓ ${b(x.rx)}</td><td class="num">↑ ${b(x.tx)}</td><td class="num doux">${x.erreurs ? pl(x.erreurs, "erreur", "erreurs") : ""}</td></tr>`).join(""));
+  put("interfaces", Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.state === "up" ? "ok" : x.state === "down" && i === e.wan ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(tr("st_", x.state))}</span></td>`
+    + `<td class="num">${x.speed ? speed(x.speed) : x.state === "down" ? t("down") : ""}</td><td class="num">↓ ${rate(x.rx)}</td><td class="num">↑ ${rate(x.tx)}</td><td class="num muted">${x.errors ? pl(x.errors, "error") : ""}</td></tr>`).join(""));
 
-  $("total-dns").textContent = pl(d.requetes_24h, "requête", "requêtes");
-  const fq = part(d.clients, x => x.n);
-  liste("clients", d.clients.map(x => ({a: qui(x), v: fr(x.n), f: fq(x), t: `${x.nom || ""} ${x.ip}`})));
-  groupes("domaines", d.groupes, "Aucune requête");
-  $("n-attendu").textContent = pl(d.attendu.n, "requête", "requêtes");
-  liste("attendu", d.attendu.domaines.map(([x, n]) => ({a: qd(x), v: fr(n), t: x})), "Aucun");
-  $("technique").textContent = d.technique.n ? `Trafic technique (DNS inverse, mDNS, WPAD…) : ${pl(d.technique.n, "requête", "requêtes")}.` : "";
-  const fp = part(d.pub_bloquee, x => x.n);
-  const ONG = {
-    nouv: ["Nouveaux", d.nouveaux_groupes.length, d.nouveaux_groupes.map(g => ({a: qd(g.domaine), sous: pl(g.n, "nouveau domaine", "nouveaux domaines"), v: heure(g.dernier), t: g.domaine})), "Aucun"],
-    pub: ["Pubs", d.bloques_24h.pub, d.pub_bloquee.map(x => ({a: qui(x), v: pl(x.n, "pub", "pubs"), f: fp(x), t: `${x.nom || ""} ${x.ip}`})), "Aucune"],
-    men: ["Menaces", d.bloques_24h.menaces, rowMen, "Rien à signaler"], sdns: ["Sans DNS", e.sans_dns.length, rowSans, "Rien à signaler"],
+  $("total-dns").textContent = pl(d.queries_24h, "query");
+  const fc = share(d.clients, x => x.n);
+  list("clients", d.clients.map(x => ({a: who(x), v: fmt(x.n), f: fc(x), t: `${x.name || ""} ${x.ip}`})));
+  groups("domains", d.groups, t("no_queries"));
+  $("n-expected").textContent = pl(d.expected.n, "query");
+  list("expected", d.expected.domains.map(([x, n]) => ({a: domBtn(x), v: fmt(n), t: x})), t("none"));
+  $("technical").textContent = d.technical.n ? t("technical", pl(d.technical.n, "query")) : "";
+  const fa = share(d.ads_blocked, x => x.n);
+  const TABS = {
+    new: [t("tab_new"), d.new_groups.length, d.new_groups.map(g => ({a: domBtn(g.domain), sub: pl(g.n, "new_domain"), v: timeStr(g.last), t: g.domain})), t("none")],
+    ads: [t("tab_ads"), d.blocked_24h.ads, d.ads_blocked.map(x => ({a: who(x), v: pl(x.n, "ad"), f: fa(x), t: `${x.name || ""} ${x.ip}`})), t("none_f")],
+    threats: [t("tab_threats"), d.blocked_24h.threats, rowThreat, t("nothing")], nodns: [t("tab_nodns"), e.no_dns.length, rowNoDns, t("nothing")],
   };
-  if (!ONG[ui.onglet]) ui.onglet = "nouv";
-  poser("onglets", Object.entries(ONG).map(([k, [t, n]]) => `<button role="tab" data-o="${k}" aria-selected="${ui.onglet === k}">${t} ${fr(n)}</button>`).join(""));
-  liste("liste-onglet", ONG[ui.onglet][2], ONG[ui.onglet][3]);
+  if (!TABS[ui.tab]) ui.tab = "new";
+  put("tabs", Object.entries(TABS).map(([k, [l, n]]) => `<button role="tab" data-o="${k}" aria-selected="${ui.tab === k}">${l} ${fmt(n)}</button>`).join(""));
+  list("tab-list", TABS[ui.tab][2], TABS[ui.tab][3]);
 
-  $("sys").textContent = `Charge ${fr(s.charge[0], 2)} · mémoire libre ${o(s.memoire.dispo)} sur ${o(s.memoire.totale)}` + (s.temperature ? ` · ${fr(s.temperature)} °C` : "");
-  $("listes").textContent = `En marche depuis ${fr(s.uptime / 86400, 1)} j. Listes de blocage : ${nb(s.listes.menaces)} domaines malveillants, ${nb(s.listes.pub)} domaines de pub, ${nb(s.listes.ip)} IP.`;
+  $("sys").textContent = t("sys", fmt(s.load[0], 2), bytes(s.memory.available), bytes(s.memory.total)) + (s.temperature ? ` · ${fmt(s.temperature)} °C` : "");
+  $("lists").textContent = t("footer", fmt(s.uptime / 86400, 1), nb(s.blocklists.threats), nb(s.blocklists.ads), nb(s.blocklists.ip));
 }
 
-let derniere = null, latT = 0;
-async function maj() {
+let last = null, latT = 0;
+async function refresh() {
   try {
-    const e = await (await fetch("api/etat")).json(), w = e.interfaces[e.wan] || {}, net = e.sante.latences.find(x => x.nom === "Internet");
-    h1.rx.push(w.rx || 0); h1.tx.push(w.tx || 0); h1.fin = e.maintenant;
+    const e = await (await fetch("api/status")).json(), w = e.interfaces[e.wan] || {}, net = e.health.latencies.find(x => x.name === "Internet");
+    h1.rx.push(w.rx || 0); h1.tx.push(w.tx || 0); h1.end = e.now;
     if (h1.rx.length > 720) { h1.rx.shift(); h1.tx.shift(); }
-    if (net && e.maintenant - latT >= 30) { lat.push(net.ms); latT = e.maintenant; if (lat.length > 120) lat.shift(); }
-    E = e; rendre(); tracer();
-    const l = longues[ui.per];
-    if (PER[ui.per].pas > 5 && (!l || Date.now() - l.t > 3e5)) chargerLongue(ui.per);
-    derniere = e.maintenant;
-    document.body.classList.remove("perime");
-    $("maj").textContent = `À jour à ${heure(derniere)}`;
+    if (net && e.now - latT >= 30) { lat.push(net.ms); latT = e.now; if (lat.length > 120) lat.shift(); }
+    S = e; render(); draw();
+    const l = longs[ui.per];
+    if (PER[ui.per].step > 5 && (!l || Date.now() - l.t > 3e5)) loadLong(ui.per);
+    last = e.now;
+    document.body.classList.remove("stale");
+    upd = () => t("updated", timeStr(last)); paintHead();
   } catch (err) {
-    document.body.classList.add("perime");
-    $("phare").className = "phare";
-    $("etat").textContent = "Vigie injoignable";
-    $("maj").textContent = derniere ? `Chiffres de ${heure(derniere)}` : "";
+    document.body.classList.add("stale");
+    $("beacon").className = "beacon";
+    head = () => t("unreachable");
+    upd = () => last ? t("stale", timeStr(last)) : ""; paintHead();
   }
 }
-// Onglet caché : aucune requête ; au retour, l'historique est relu puis le rythme reprend
-let tourne = false;
-function demarrer() {
-  tourne = true;
-  charger1h().then(() => { maj(); setInterval(() => document.hidden || maj(), 5000); });
+// Language: static texts carry data-i18n / data-i18n-ph / data-i18n-aria; the rest is rendered through t()
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.querySelectorAll("[data-i18n]").forEach(el => el.textContent = t(el.dataset.i18n));
+  document.querySelectorAll("[data-i18n-ph]").forEach(el => el.placeholder = t(el.dataset.i18nPh));
+  document.querySelectorAll("[data-i18n-aria]").forEach(el => el.setAttribute("aria-label", t(el.dataset.i18nAria)));
+  const other = lang === "fr" ? "en" : "fr";
+  $("lang").textContent = other.toUpperCase(); $("lang").setAttribute("aria-label", t("lang_switch")); $("lang").lang = other;
+  paintHead();
 }
-document.addEventListener("visibilitychange", () => { if (document.hidden) return; if (tourne) charger1h().then(maj); else demarrer(); });
-if (!document.hidden) demarrer();
+$("lang").addEventListener("click", () => {
+  lang = lang === "fr" ? "en" : "fr";
+  try { localStorage.setItem("vigie.lang", lang); } catch (err) {}
+  applyLang(); render(); draw();
+  if ($("card").open && cardRefresh) cardRefresh();
+});
+applyLang();
+// Hidden tab: no requests; on return the history is re-read and the rhythm resumes
+let running = false;
+function start() {
+  running = true;
+  load1h().then(() => { refresh(); setInterval(() => document.hidden || refresh(), 5000); });
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) return; if (running) load1h().then(refresh); else start(); });
+if (!document.hidden) start();
 </script>
 </body>
 </html>

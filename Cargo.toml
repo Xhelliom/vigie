@@ -2,7 +2,7 @@
 name = "vigie"
 version = "0.2.0"
 edition = "2021"
-description = "Page d'état d'un routeur NixOS"
+description = "Status page for a NixOS router"
 license = "MIT"
 
 [dependencies]
@@ -13,6 +13,6 @@ serde_json = "1"
 opt-level = "s"
 lto = true
 codegen-units = 1
-# Un panic arrête le service : systemd le relance (Restart=always) au lieu de laisser un démon à moitié mort
+# A panic stops the service: systemd restarts it (Restart=always) instead of leaving a half-dead daemon
 panic = "abort"
 strip = true

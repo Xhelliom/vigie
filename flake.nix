@@ -1,16 +1,16 @@
 {
-  description = "Vigie : page d'état d'un routeur NixOS";
+  description = "Vigie: status page for a NixOS router";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
   outputs = { self, nixpkgs }:
     let
-      systemes = [ "x86_64-linux" "aarch64-linux" ];
-      pour = f: nixpkgs.lib.genAttrs systemes (s: f nixpkgs.legacyPackages.${s});
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
     in
     {
-      # Un seul binaire Rust (page HTML embarquée)
-      packages = pour (pkgs: {
+      # A single Rust binary (HTML page embedded)
+      packages = forAll (pkgs: {
         default = pkgs.rustPlatform.buildRustPackage {
           pname = "vigie";
           version = (pkgs.lib.importTOML ./Cargo.toml).package.version;
