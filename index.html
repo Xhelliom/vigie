@@ -6,269 +6,239 @@
 <title>Vigie</title>
 <style>
   :root {
-    --fond:#eceeed; --surface:#fff; --texte:#16201f; --doux:#6b7674; --filet:rgba(22,32,31,.08);
-    --mer:#1f6f6a; --feu:#d9822b; --alerte:#c2410c;
-    --ombre:0 1px 2px rgba(20,40,38,.05), 0 10px 28px -14px rgba(20,40,38,.22);
+    --fond:#e9ecec; --surface:#fff; --texte:#141d1c; --doux:#54605e; --filet:rgba(20,29,28,.1);
+    --mer:#1f6f6a; --serie2:#6b7fd6; --ok:#2e9d5b; --attention:#c98a00; --critique:#d1343b; --feu:#d9822b;
+    --verre:rgba(255,255,255,.68); --bord:rgba(255,255,255,.85); --haut:rgba(255,255,255,.95);
+    --reflet:linear-gradient(180deg, rgba(255,255,255,.7), rgba(255,255,255,0) 38%);
     color-scheme: light dark;
   }
   @media (prefers-color-scheme: dark) { :root {
-    --fond:#0e1515; --surface:#162020; --texte:#e6eeec; --doux:#8fa09d; --filet:rgba(255,255,255,.07);
-    --mer:#5cc2b8; --feu:#f0a34a; --alerte:#ff8a65;
-    --ombre:inset 0 1px 0 rgba(255,255,255,.04), 0 12px 30px -16px rgba(0,0,0,.6);
+    --fond:#0d1414; --surface:#162020; --texte:#e8f0ee; --doux:#9fb0ad; --filet:rgba(255,255,255,.09);
+    --mer:#5cc2b8; --serie2:#9aa8ff; --ok:#5fd08a; --attention:#f0b84a; --critique:#ff6b6b; --feu:#f0a34a;
+    --verre:rgba(24,36,36,.6); --bord:rgba(255,255,255,.1); --haut:rgba(255,255,255,.14);
+    --reflet:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%);
   } }
   * { box-sizing:border-box; }
-  body { margin:0; font:15px/1.45 "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-    font-variant-numeric:tabular-nums; font-optical-sizing:auto; background:var(--fond); color:var(--texte); -webkit-font-smoothing:antialiased; }
-  .doux { color:var(--doux); }
+  body { margin:0; font:14px/1.4 "Inter Variable", Inter, system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--fond); color:var(--texte); -webkit-font-smoothing:antialiased; }
   a { color:inherit; }
-  :focus-visible { outline:2px solid var(--mer); outline-offset:3px; border-radius:6px; }
+  small, .doux { color:var(--doux); }
+  :focus-visible { outline:2px solid var(--mer); outline-offset:2px; border-radius:6px; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  .num, td.num, th.num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+  .mono { font:12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
 
-  /* En-tête translucide : le contenu défile dessous */
-  header { position:sticky; top:0; z-index:2; display:flex; justify-content:space-between; align-items:center; gap:16px;
-    padding:14px clamp(16px,4vw,40px); background:color-mix(in srgb, var(--fond) 72%, transparent);
-    backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%); }
-  h1 { margin:0; font-size:24px; font-weight:700; letter-spacing:-.035em; line-height:1; }
-  h1 small { display:block; margin-top:4px; font-size:13px; font-weight:450; letter-spacing:0; color:var(--doux); }
+  /* Fond : trois halos flous qui dérivent derrière le verre */
+  .halos { position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none; }
+  .halos i { position:absolute; width:55vmax; height:55vmax; border-radius:50%; filter:blur(80px); will-change:transform; }
+  .halos i:nth-child(1) { top:-22vmax; left:-14vmax; background:var(--mer); opacity:.29; animation:derive1 48s ease-in-out infinite alternate; }
+  .halos i:nth-child(2) { top:8vh; right:-22vmax; background:var(--feu); opacity:.19; animation:derive2 62s ease-in-out infinite alternate; }
+  .halos i:nth-child(3) { bottom:-26vmax; left:22vw; background:color-mix(in srgb, var(--mer) 55%, #6f9cff); opacity:.23; animation:derive3 55s ease-in-out infinite alternate; }
+  @media (prefers-color-scheme: dark) { .halos i:nth-child(1) { opacity:.2; } .halos i:nth-child(2) { opacity:.12; } .halos i:nth-child(3) { opacity:.16; } }
+  @keyframes derive1 { to { transform:translate(26vw, 20vh) scale(1.2); } }
+  @keyframes derive2 { to { transform:translate(-30vw, 26vh) scale(.85); } }
+  @keyframes derive3 { to { transform:translate(-24vw, -22vh) scale(1.15); } }
 
-  /* Le feu de vigie : seul élément animé, et seulement quand il y a quelque chose à voir */
-  .phare { display:flex; align-items:center; gap:12px; text-align:right; }
-  .phare strong { display:block; font-size:15px; font-weight:600; letter-spacing:-.01em; }
-  .phare small { display:block; font-size:12.5px; color:var(--doux); }
-  .phare i { position:relative; order:2; width:12px; height:12px; border-radius:50%; background:var(--doux); flex:none; }
-  .phare.calme i { background:var(--mer); box-shadow:0 0 0 4px color-mix(in srgb, var(--mer) 18%, transparent); }
-  .phare.attention i { background:var(--feu); box-shadow:0 0 0 4px color-mix(in srgb, var(--feu) 22%, transparent), 0 0 18px var(--feu); }
-  .phare.attention i::after { content:""; position:absolute; inset:0; border-radius:50%; background:var(--feu); animation:halo 2.4s ease-out infinite; }
+  /* A : en-tête collant */
+  header { position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:8px 20px; flex-wrap:wrap; padding:10px max(16px, calc((100vw - 1760px) / 2 + 16px));
+    background:color-mix(in srgb, var(--fond) 70%, transparent); backdrop-filter:blur(18px) saturate(160%); -webkit-backdrop-filter:blur(18px) saturate(160%); }
+  h1 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.035em; line-height:1; }
+  #sys { flex:1; min-width:0; margin:0; font-size:12.5px; color:var(--doux); }
+  .phare { --c:var(--doux); display:flex; align-items:center; gap:10px; text-align:right; margin-left:auto; }
+  .phare.calme { --c:var(--ok); } .phare.attention { --c:var(--attention); } .phare.critique { --c:var(--critique); }
+  .phare strong { display:block; font-size:14px; font-weight:600; }
+  .phare small { display:block; font-size:12px; }
+  .phare i { position:relative; order:2; width:14px; height:14px; border-radius:50%; flex:none;
+    background:radial-gradient(circle at 34% 30%, #fff 0 10%, color-mix(in srgb, var(--c) 55%, #fff) 24%, var(--c) 62%, color-mix(in srgb, var(--c) 65%, #000) 100%);
+    box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 20%, transparent); }
+  .phare.attention i, .phare.critique i { box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent), 0 0 16px var(--c); }
+  .phare.attention i::after, .phare.critique i::after { content:""; position:absolute; inset:0; border-radius:50%; background:var(--c); animation:halo 2.4s ease-out infinite; }
   @keyframes halo { from { transform:scale(1); opacity:.6; } to { transform:scale(3.2); opacity:0; } }
 
-  #points { display:flex; flex-wrap:wrap; gap:8px; padding:4px clamp(16px,4vw,40px) 0; }
-  #points:empty { display:none; }
-  .puce { display:inline-flex; align-items:center; gap:8px; padding:7px 14px; border-radius:999px; text-decoration:none; font-weight:500;
-    background:color-mix(in srgb, var(--feu) 16%, var(--surface)); transition:transform .1s ease-out; }
-  .puce::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--feu); }
-  .puce:active { transform:scale(.97); }
+  /* Grille 12 colonnes : téléphone d'abord, puis portable, puis large */
+  .page { max-width:1760px; margin:0 auto; padding:8px 16px 24px; }
+  .grille { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:16px; }
+  .grille > * { grid-column:span 12; min-width:0; scroll-margin-top:64px; }
+  .grille > .tuile { grid-column:span 6; }
+  @media (min-width:700px) { .grille > .tuile { grid-column:span 4; } }
+  @media (min-width:1100px) {
+    .trafic { grid-column:span 8 !important; } .alertes { grid-column:span 4 !important; }
+    .dns1, .dns2 { grid-column:span 6 !important; }
+  }
+  @media (max-width:1099px) { .m { display:none; } }
+  @media (min-width:1400px) {
+    .grille > .tuile { grid-column:span 2; }
+    .trafic, .alertes { height:316px; }
+    .appareils { grid-column:span 8 !important; } .cote { grid-column:span 4 !important; }
+    .dns1, .dns2, .dns3 { grid-column:span 4 !important; }
+  }
 
-  .contenu { padding:16px clamp(16px,4vw,40px) 24px; }
-  .pan { background:var(--surface); border-radius:18px; box-shadow:var(--ombre); padding:16px 18px 10px; }
+  .pan, .tuile { position:relative; background:var(--reflet), var(--verre); border:1px solid var(--bord); border-radius:14px; padding:14px 16px;
+    backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
+    box-shadow:inset 0 1px 0 var(--haut), 0 1px 2px rgba(20,40,38,.06), 0 18px 36px -22px rgba(20,40,38,.38); }
+  .pan > h3 { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:0 0 6px; font-size:15px; font-weight:650; letter-spacing:-.015em; }
+  .pan > h3 span, h4 span { font-size:12.5px; font-weight:450; letter-spacing:0; color:var(--doux); text-align:right; }
+  .pan > p { margin:0 0 6px; font-size:12.5px; color:var(--doux); }
+  h4 { margin:12px 0 2px; font-size:13px; font-weight:650; display:flex; justify-content:space-between; gap:8px; }
 
-  /* Héros : le débit Internet, en grand, avec sa trace des 5 dernières minutes */
-  .hero { display:grid; grid-template-columns:minmax(0,auto) minmax(0,1fr); gap:8px 40px; align-items:end; padding:22px 24px 18px; margin-bottom:16px; }
-  .debits { display:flex; flex-direction:column; gap:14px; }
-  .debit span { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--doux); }
-  .debit span::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--mer); }
-  .debit.tx span::before { background:var(--doux); }
-  .debit b { display:block; font-size:clamp(36px,6vw,58px); font-weight:620; letter-spacing:-.04em; line-height:1; }
-  .debit b small { font-size:.36em; font-weight:500; letter-spacing:0; color:var(--doux); margin-left:4px; }
-  .trace { display:flex; flex-direction:column; height:170px; }
+  /* B : chiffres-clés */
+  .tuile { height:112px; padding:12px 14px; overflow:hidden; }
+  .tuile h2 { margin:0; font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--doux); }
+  .tuile b { display:block; margin-top:2px; font-size:30px; font-weight:620; letter-spacing:-.035em; line-height:1.15; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .tuile b small, .num small { font-size:.45em; font-weight:500; letter-spacing:0; margin-left:3px; color:var(--doux); }
+  .tuile p { margin:0; font-size:12.5px; color:var(--doux); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tuile .mini { position:absolute; right:12px; bottom:10px; width:42%; height:28px; }
+  .tuile.rx b::before, .tuile.tx b::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--mer); vertical-align:middle; }
+  .tuile.tx b::before { background:var(--serie2); }
+
+  /* C : trafic et « à regarder » */
+  .trafic { display:flex; flex-direction:column; min-height:240px; }
+  .trace { flex:1; min-height:0; margin:0; display:flex; flex-direction:column; }
+  .trace figcaption { text-align:right; margin-bottom:4px; font-size:12.5px; color:var(--doux); }
   .trace svg { flex:1; width:100%; min-height:0; display:block; overflow:visible; }
-  .trace figcaption { text-align:right; margin-bottom:6px; font-size:12.5px; color:var(--doux); }
   #base { stroke:var(--filet); stroke-width:1; vector-effect:non-scaling-stroke; }
   #ligne-rx { fill:none; stroke:var(--mer); stroke-width:2; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
-  #ligne-tx { fill:none; stroke:var(--doux); stroke-width:1.25; vector-effect:non-scaling-stroke; stroke-linejoin:round; opacity:.8; }
-  #cumul { grid-column:1 / -1; margin:6px 0 0; font-size:13px; color:var(--doux); }
+  #ligne-tx { fill:none; stroke:var(--serie2); stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+  #cumul { margin:6px 0 0; font-size:12.5px; color:var(--doux); }
+  .alertes { display:flex; flex-direction:column; }
+  .alertes ul { overflow-y:auto; flex:1; min-height:0; margin-top:0; }
+  .al { align-items:center; justify-content:flex-start; }
+  .niv { flex:none; min-width:64px; padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:650; text-align:center; border:1px solid currentColor; }
+  .n0 .niv { color:var(--critique); } .n1 .niv { color:var(--attention); } .n2 .niv { color:var(--doux); }
+  .sante { display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:8px; padding-top:8px; border-top:1px solid var(--filet); font-size:12.5px; }
+  .indic { display:flex; align-items:center; gap:6px; } .indic span { color:var(--doux); }
+  .pt { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--doux); flex:none; margin-right:6px; }
+  .pt.ok { background:var(--ok); box-shadow:0 0 6px color-mix(in srgb, var(--ok) 50%, transparent); }
+  .pt.att { background:var(--attention); } .pt.ko { background:var(--critique); box-shadow:0 0 6px color-mix(in srgb, var(--critique) 55%, transparent); }
+  .indic .pt { margin:0; }
 
-  /* Sections dans l'ordre de ce qui demande l'attention ; colonnes plutôt que grille : les panneaux s'empilent sans trous */
-  .bloc { margin-top:28px; }
-  .bloc:first-child { margin-top:0; }
-  .bloc > h2 { margin:0 0 12px 4px; font-size:13px; font-weight:650; letter-spacing:.08em; text-transform:uppercase; color:var(--doux); }
-  .cols { columns:340px; column-gap:16px; }
-  .cols .pan, .bloc > .pan { break-inside:avoid; margin-bottom:16px; }
-  .pan > h3 { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:0; font-size:16px; font-weight:650; letter-spacing:-.015em; }
-  .pan > h3 span { font-size:13px; font-weight:450; letter-spacing:0; color:var(--doux); text-align:right; }
-  .pan > p { margin:2px 0 4px; font-size:13px; color:var(--doux); }
-  ul { list-style:none; margin:8px 0 0; padding:0; }
-  li { position:relative; display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:9px 0; }
+  ul { list-style:none; margin:4px 0 0; padding:0; }
+  li { position:relative; display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:6px 0; min-height:32px; }
   li + li { border-top:1px solid var(--filet); }
-  li .p { flex:1; min-width:0; overflow-wrap:break-word; }
-  li small { display:block; font-size:12.5px; color:var(--doux); overflow-wrap:normal; }
+  li .p { flex:1; min-width:0; overflow-wrap:anywhere; }
+  li .p.une { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; overflow-wrap:normal; }
+  li small { display:block; font-size:12.5px; overflow-wrap:normal; }
   li small span + span { margin-left:10px; }
-  li .v { white-space:nowrap; font-weight:500; }
+  li .v { white-space:nowrap; font-weight:500; font-variant-numeric:tabular-nums; }
   li.vide { color:var(--doux); }
-  li.barre::after { content:""; position:absolute; left:0; bottom:-1px; height:2px; border-radius:2px; width:calc(var(--f) * 100%); background:var(--mer); opacity:.5; }
-  .menace { color:var(--alerte); font-weight:600; }
-  .tag { padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; color:var(--texte); background:color-mix(in srgb, var(--feu) 20%, var(--surface)); }
-
-  section, #sante, #reseaux { scroll-margin-top:96px; }
-  /* Santé du routeur : une ligne sous le débit */
-  .sante { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px 24px; margin:4px 0 0; padding-top:12px; border-top:1px solid var(--filet); }
-  .reseaux { margin-top:12px; }
-
-  /* Un nom d'appareil se clique : sa fiche s'ouvre */
-  .qui { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; text-align:left;
-    text-decoration:underline dotted color-mix(in srgb, var(--doux) 70%, transparent); text-underline-offset:3px; }
+  li.barre::after { content:""; position:absolute; left:0; bottom:-1px; height:2px; border-radius:2px; width:calc(var(--f) * 100%); background:linear-gradient(90deg, var(--mer), color-mix(in srgb, var(--mer) 15%, transparent)); }
+  .menace { color:var(--critique); font-weight:600; }
+  .tag { padding:1px 8px; border-radius:999px; font-size:11.5px; font-weight:600; border:1px solid var(--bord); background:color-mix(in srgb, var(--attention) 20%, transparent); }
+  .qui { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; text-align:left; text-decoration:underline dotted color-mix(in srgb, var(--doux) 70%, transparent); text-underline-offset:3px; }
   .qui:hover { text-decoration-color:var(--mer); }
   .nb { font-size:12.5px; color:var(--doux); margin-left:6px; }
   details > summary { cursor:pointer; list-style:none; }
   details > summary::-webkit-details-marker { display:none; }
   details > summary::before { content:"▸"; display:inline-block; width:1em; color:var(--doux); transition:transform .15s; }
   details[open] > summary::before { transform:rotate(90deg); }
-  ul.sous { margin:4px 0 0 1em; }
-  ul.sous li { padding:5px 0; font-size:13.5px; }
-  .attendu { margin-top:6px; padding-top:8px; border-top:1px solid var(--filet); font-size:13.5px; }
+  ul.sous { margin:2px 0 4px 1em; } ul.sous li { min-height:26px; padding:3px 0; font-size:13px; }
+  .attendu { margin-top:6px; padding-top:6px; border-top:1px solid var(--filet); font-size:13px; }
   .attendu > summary { color:var(--doux); }
 
+  /* D : tableau des appareils et colonne latérale */
+  .defile { overflow-x:clip; } .liens-d { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th { position:sticky; top:48px; z-index:1; padding:4px 8px; font-size:12px; font-weight:650; text-transform:uppercase; letter-spacing:.05em; color:var(--doux); text-align:left; white-space:nowrap; background:color-mix(in srgb, var(--fond) 80%, transparent); }
+  td { padding:6px 8px; height:32px; border-top:1px solid var(--filet); white-space:nowrap; }
+  td:first-child, th:first-child { padding-left:0; }
+  td.nom { max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+  .res { padding:10px 12px; border-radius:12px; border:1px solid var(--bord); background:color-mix(in srgb, var(--surface) 45%, transparent); }
+  .res h4 { margin:0; font-size:14px; }
+  .res p { margin:2px 0 0; font-size:12.5px; color:var(--doux); }
+  .reseaux { display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:10px; margin-bottom:10px; }
+  .jauge { height:6px; border-radius:3px; background:var(--filet); margin:8px 0 4px; overflow:hidden; }
+  .jauge i { display:block; height:100%; width:calc(var(--f) * 100%); background:linear-gradient(180deg, color-mix(in srgb, var(--mer) 50%, #fff), var(--mer) 60%); }
+  .jauge.pleine i { background:var(--attention); }
+  .liens td { height:28px; font-size:13px; }
+  #pied { font-size:12.5px; color:var(--doux); }
+  #pied p { margin:0; }
+
   /* Fiche d'un appareil */
-  dialog { width:min(560px, calc(100vw - 32px)); max-height:min(82vh, 760px); padding:0; border:1px solid var(--bord); border-radius:18px; color:var(--texte);
-    background:var(--reflet), color-mix(in srgb, var(--surface) 90%, transparent);
-    backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
+  dialog { width:min(560px, calc(100vw - 32px)); max-height:min(82vh, 760px); padding:0; border:1px solid var(--bord); border-radius:14px; color:var(--texte);
+    background:var(--reflet), color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
     box-shadow:inset 0 1px 0 var(--haut), 0 30px 60px -20px rgba(0,0,0,.45); }
   dialog::backdrop { background:rgba(10,20,20,.3); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
-  .fiche { padding:18px 20px 12px; }
+  .fiche { padding:16px 18px 10px; }
   .fiche-tete { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
-  .fiche-tete h3 { margin:0; font-size:19px; font-weight:680; letter-spacing:-.02em; overflow-wrap:anywhere; }
-  .fiche-tete p { margin:2px 0 0; font-size:13px; color:var(--doux); }
+  .fiche-tete h3 { margin:0; font-size:18px; font-weight:680; letter-spacing:-.02em; overflow-wrap:anywhere; }
+  .fiche-tete p { margin:2px 0 0; font-size:12.5px; color:var(--doux); }
   .fermer { font:inherit; font-size:22px; line-height:1; padding:2px 9px; border:0; border-radius:8px; background:none; color:var(--doux); cursor:pointer; }
   .fermer:hover { color:var(--texte); background:var(--filet); }
-  .fiche h4 { margin:18px 0 0; font-size:14px; font-weight:650; }
-  .fiche .chiffres { flex-wrap:wrap; }
-  .indic { display:flex; align-items:center; gap:8px; }
-  .indic span { color:var(--doux); }
-  .pt { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--doux); flex:none; }
-  .pt.ok { background:var(--mer); } .pt.ko { background:var(--feu); }
-  li .p > .pt { margin-right:9px; vertical-align:1px; }
-  .reseaux { display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:12px; margin-bottom:8px; }
-  .res { padding:14px 16px; border-radius:14px; background:color-mix(in srgb, var(--fond) 55%, var(--surface)); }
-  .res h3 { display:flex; justify-content:space-between; align-items:center; margin:0; font-size:16px; font-weight:650; letter-spacing:-.015em; }
-  .res p { margin:2px 0 0; font-size:13px; color:var(--doux); }
-  .chiffres { display:flex; gap:22px; margin-top:12px; }
-  .chiffres b { display:block; font-size:22px; font-weight:620; letter-spacing:-.03em; line-height:1.1; }
+  .chiffres { display:flex; flex-wrap:wrap; gap:6px 22px; margin-top:10px; }
+  .chiffres b { display:block; font-size:20px; font-weight:620; letter-spacing:-.03em; line-height:1.1; }
   .chiffres span { font-size:12.5px; color:var(--doux); }
-  .jauge { height:6px; border-radius:3px; background:var(--filet); margin:12px 0 4px; overflow:hidden; }
-  .jauge i { display:block; height:100%; width:calc(var(--f) * 100%); background:var(--mer); border-radius:3px; }
-  .jauge.pleine i { background:var(--feu); }
 
+  body.perime .page { filter:grayscale(1); opacity:.5; transition:opacity .3s, filter .3s; }
 
-  body.perime .contenu { filter:grayscale(1); opacity:.5; transition:opacity .3s, filter .3s; }
-
-  @media (max-width:640px) {
-    .hero { grid-template-columns:1fr; padding:18px; }
-    .debits { flex-direction:row; gap:28px; }
-    .trace { height:130px; }
-    .phare small { display:none; }
+  /* Téléphone : le tableau devient une liste à deux lignes */
+  @media (max-width:699px) {
+    .m { display:none; }
+    thead { display:none; }
+    tbody tr { display:grid; grid-template-columns:1fr auto; border-top:1px solid var(--filet); padding:4px 0; }
+    td { border:0; height:auto; padding:1px 0; }
+    td.nom { max-width:none; } td.nom { grid-column:1; } td.d { grid-column:2; grid-row:1; }
+    td.ip { grid-column:1; } td.r { grid-column:2; grid-row:2; }
+    td.q, td.b { display:none; }
+    .phare small, #sys { display:none; }
+    dialog { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; border-radius:0; }
   }
-  @media (prefers-reduced-motion: reduce) { .phare.attention i::after { animation:none; } .puce, details > summary::before { transition:none; } }
-  @media (prefers-reduced-transparency: reduce) { header { background:var(--fond); backdrop-filter:none; -webkit-backdrop-filter:none; } }
-  /* Variante glossy : verre sur fond coloré, reflets en haut des surfaces */
-  :root { --verre:rgba(255,255,255,.46); --bord:rgba(255,255,255,.8); --haut:rgba(255,255,255,.95);
-    --reflet:linear-gradient(180deg, rgba(255,255,255,.75), rgba(255,255,255,0) 38%); }
-  @media (prefers-color-scheme: dark) { :root { --verre:rgba(24,36,36,.44); --bord:rgba(255,255,255,.09); --haut:rgba(255,255,255,.14);
-    --reflet:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,0) 38%); } }
-  /* Fond : trois halos très flous qui dérivent lentement derrière le verre */
-  .halos { position:fixed; inset:0; z-index:-1; overflow:hidden; pointer-events:none; }
-  .halos i { position:absolute; width:55vmax; height:55vmax; border-radius:50%; filter:blur(80px); will-change:transform; }
-  .halos i:nth-child(1) { top:-22vmax; left:-14vmax; background:var(--mer); opacity:.48; animation:derive1 48s ease-in-out infinite alternate; }
-  .halos i:nth-child(2) { top:8vh; right:-22vmax; background:var(--feu); opacity:.32; animation:derive2 62s ease-in-out infinite alternate; }
-  .halos i:nth-child(3) { bottom:-26vmax; left:22vw; background:color-mix(in srgb, var(--mer) 55%, #6f9cff); opacity:.38; animation:derive3 55s ease-in-out infinite alternate; }
-  @media (prefers-color-scheme: dark) { .halos i:nth-child(1) { opacity:.34; } .halos i:nth-child(2) { opacity:.20; } .halos i:nth-child(3) { opacity:.26; } }
-  @keyframes derive1 { to { transform:translate(26vw, 20vh) scale(1.2); } }
-  @keyframes derive2 { to { transform:translate(-30vw, 26vh) scale(.85); } }
-  @keyframes derive3 { to { transform:translate(-24vw, -22vh) scale(1.15); } }
-  .pan { background:var(--reflet), var(--verre); border:1px solid var(--bord);
-    backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
-    box-shadow:inset 0 1px 0 var(--haut), 0 1px 2px rgba(20,40,38,.06), 0 22px 44px -22px rgba(20,40,38,.38); }
-  .res { background:linear-gradient(180deg, color-mix(in srgb, var(--surface) 70%, transparent), color-mix(in srgb, var(--surface) 30%, transparent));
-    border:1px solid var(--bord); box-shadow:inset 0 1px 0 var(--haut), 0 8px 18px -14px rgba(20,40,38,.35); }
-
-  /* le feu : une perle avec son reflet */
-  .phare i { width:14px; height:14px; }
-  .phare.calme i { background:radial-gradient(circle at 34% 30%, #fff 0 10%, color-mix(in srgb, var(--mer) 55%, #fff) 24%, var(--mer) 62%, color-mix(in srgb, var(--mer) 65%, #000) 100%); }
-  .phare.attention i { background:radial-gradient(circle at 34% 30%, #fff 0 10%, color-mix(in srgb, var(--feu) 55%, #fff) 24%, var(--feu) 62%, color-mix(in srgb, var(--feu) 65%, #000) 100%); }
-  .pt.ok { background:radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--mer) 40%, #fff), var(--mer) 70%); box-shadow:0 0 6px color-mix(in srgb, var(--mer) 50%, transparent); }
-  .pt.ko { background:radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--feu) 40%, #fff), var(--feu) 70%); box-shadow:0 0 6px color-mix(in srgb, var(--feu) 55%, transparent); }
-
-  .puce, .tag { background:linear-gradient(180deg, rgba(255,255,255,.55), rgba(255,255,255,.12)), color-mix(in srgb, var(--feu) 22%, transparent);
-    border:1px solid var(--bord); box-shadow:inset 0 1px 0 var(--haut), 0 4px 12px -6px color-mix(in srgb, var(--feu) 60%, transparent);
-    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); }
-  @media (prefers-color-scheme: dark) { .puce, .tag { background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,0)), color-mix(in srgb, var(--feu) 22%, transparent); } }
-
-  .debit b { background:linear-gradient(180deg, var(--texte) 45%, color-mix(in srgb, var(--texte) 50%, var(--mer)));
-    -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
-  .debit b small { -webkit-text-fill-color:var(--doux); }
-
-  .jauge { height:8px; border-radius:4px; box-shadow:inset 0 1px 2px rgba(0,0,0,.12); }
-  .jauge i { border-radius:4px; background:linear-gradient(180deg, color-mix(in srgb, var(--mer) 50%, #fff), var(--mer) 60%); box-shadow:inset 0 1px 0 rgba(255,255,255,.5); }
-  .jauge.pleine i { background:linear-gradient(180deg, color-mix(in srgb, var(--feu) 50%, #fff), var(--feu) 60%); }
-  li.barre::after { opacity:.9; background:linear-gradient(90deg, var(--mer), color-mix(in srgb, var(--mer) 15%, transparent)); }
-
-  @media (prefers-reduced-motion: reduce) { .halos i { animation:none; } }
+  @media (prefers-reduced-motion: reduce) { .halos i, .phare i::after { animation:none; } details > summary::before { transition:none; } }
   @media (prefers-reduced-transparency: reduce) {
+    header { background:var(--fond); backdrop-filter:none; -webkit-backdrop-filter:none; }
     .halos { display:none; }
-    .pan, .puce, .tag, dialog { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--surface); }
+    .pan, .tuile, dialog { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--surface); }
   }
 </style>
 </head>
 <body>
 <div class="halos" aria-hidden="true"><i></i><i></i><i></i></div>
 <header>
-  <h1>Vigie<small>Routeur de la maison</small></h1>
+  <h1>Vigie</h1>
+  <p id="sys"></p>
   <div id="phare" class="phare" role="status"><i aria-hidden="true"></i><div><strong id="etat">Connexion…</strong><small id="maj"></small></div></div>
 </header>
-<nav id="points" aria-label="Points à regarder"></nav>
 
-<div class="contenu">
-  <section class="bloc" aria-labelledby="t-etat">
-    <h2 id="t-etat">État</h2>
-    <div class="pan hero">
-      <div class="debits">
-        <div class="debit"><span>Réception</span><b id="rx">–</b></div>
-        <div class="debit tx"><span>Émission</span><b id="tx">–</b></div>
-      </div>
-      <figure class="trace" style="margin:0">
-        <figcaption id="legende">5 dernières minutes</figcaption>
-        <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
-          <defs><linearGradient id="degrade" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" style="stop-color:var(--mer);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--mer);stop-opacity:0"/>
-          </linearGradient></defs>
-          <path id="base" d="M0,150L600,150"/><path id="aire" fill="url(#degrade)"/><path id="ligne-rx"/><path id="ligne-tx"/>
-        </svg>
-      </figure>
-      <p id="cumul"></p>
-      <div class="sante" id="sante"></div>
-    </div>
-  </section>
+<main class="page"><div class="grille">
+  <section class="tuile rx" id="k-rx"><h2>Réception</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile tx" id="k-tx"><h2>Émission</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile" id="k-lat"><h2>Latence Internet</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile" id="k-app"><h2>Appareils en ligne</h2><b>–</b><p></p></section>
+  <section class="tuile" id="k-dns"><h2>Requêtes DNS 24 h</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile" id="k-blo"><h2>Bloqué 24 h</h2><b>–</b><p></p></section>
 
-  <section class="bloc" aria-labelledby="t-securite">
-    <h2 id="t-securite">Sécurité</h2>
-    <div class="cols">
-      <section class="pan" id="s-menaces"><h3>Domaines malveillants bloqués <span>24 h</span></h3><ul id="menaces"></ul></section>
-      <section class="pan" id="s-nouveaux"><h3>Nouveaux appareils <span>7 jours</span></h3><ul id="nouveaux-app"></ul></section>
-      <section class="pan"><h3>Connexions sans DNS <span>24 h</span></h3><p>Vers une IP jamais annoncée par le DNS : souvent normal (applis, jeux), à surveiller pour les objets connectés.</p><ul id="sansdns"></ul></section>
-    </div>
-  </section>
+  <section class="pan trafic" id="trafic"><h3>Trafic WAN <span id="lien-wan"></span></h3>
+    <figure class="trace"><figcaption id="legende">5 dernières minutes</figcaption>
+      <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+        <defs><linearGradient id="degrade" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color:var(--mer);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--mer);stop-opacity:0"/>
+        </linearGradient></defs>
+        <path id="base" d="M0,150L600,150"/><path id="aire" fill="url(#degrade)"/><path id="ligne-rx"/><path id="ligne-tx"/>
+      </svg></figure>
+    <p id="cumul"></p></section>
+  <section class="pan alertes" id="alertes-p"><h3>À regarder <span id="n-alertes"></span></h3><ul id="alertes"></ul><div class="sante" id="sante"></div></section>
+  <section class="pan" id="s-menaces" hidden><h3>Domaines malveillants bloqués <span>24 h</span></h3><ul id="menaces"></ul></section>
+  <section class="pan" id="s-sansdns" hidden><h3>Connexions sans DNS <span>24 h</span></h3><p>Vers une IP jamais annoncée par le DNS : souvent normal, à surveiller pour les objets connectés.</p><ul id="sansdns"></ul></section>
 
-  <section class="bloc" aria-labelledby="t-activite">
-    <h2 id="t-activite">Activité</h2>
-    <div class="cols">
-      <section class="pan"><h3>Gros consommateurs <span>maintenant</span></h3><ul id="conso"></ul></section>
-      <section class="pan"><h3>Qui interroge le DNS <span id="total-dns"></span></h3><p>Un nom se clique : ses domaines et ce qui a été bloqué pour lui.</p><ul id="clients"></ul></section>
-      <section class="pan"><h3>Domaines les plus demandés <span>24 h</span></h3><p>Regroupés par domaine principal.</p><ul id="domaines"></ul>
-        <details class="attendu"><summary>Trafic attendu <span class="nb" id="n-attendu"></span></summary><ul id="attendu"></ul></details></section>
-      <section class="pan"><h3>Pubs bloquées <span>24 h</span></h3><ul id="pub"></ul></section>
-      <section class="pan"><h3>Nouveaux domaines <span>24 h</span></h3><ul id="nouveaux"></ul></section>
-    </div>
-  </section>
+  <section class="pan appareils" id="appareils"><h3>Appareils <span id="n-appareils"></span></h3>
+    <div class="defile"><table><thead><tr><th>Nom</th><th>IP</th><th class="m">MAC</th><th>Réseau</th><th class="num">Débit</th><th class="num q">Req. 24 h</th><th class="num b">Bloquées</th><th class="num">Dernier vu</th><th class="num m">Premier vu</th></tr></thead><tbody id="tb"></tbody></table></div></section>
+  <section class="pan cote" id="reseaux-p"><h3>Réseaux <span id="n-res"></span></h3><div class="reseaux" id="reseaux"></div>
+    <h4>Liens</h4><div class="liens-d"><table class="liens"><tbody id="interfaces"></tbody></table></div></section>
 
-  <section class="bloc" aria-labelledby="t-reseau">
-    <h2 id="t-reseau">Réseau</h2>
-    <div class="pan"><h3>Réseaux <span id="lien-wan"></span></h3><div class="reseaux" id="reseaux"></div></div>
-    <div class="cols">
-      <section class="pan" id="s-appareils"><h3>Appareils <span id="n-appareils"></span></h3><p>Point vert : présent sur le réseau en ce moment.</p><ul id="appareils"></ul></section>
-      <section class="pan" id="s-fixes"><h3>Adresses fixes <span id="n-fixes"></span></h3><p>Présentes sur le réseau sans bail DHCP : l'adresse est réglée à la main sur l'appareil.</p><ul id="fixes"></ul></section>
-      <section class="pan"><h3>Liens</h3><ul id="interfaces"></ul></section>
-    </div>
-  </section>
+  <section class="pan dns1" id="s-clients"><h3>Qui interroge <span id="total-dns"></span></h3><ul id="clients"></ul></section>
+  <section class="pan dns2" id="s-domaines"><h3>Domaines demandés <span>24 h</span></h3><ul id="domaines"></ul>
+    <details class="attendu"><summary>Trafic attendu <span class="nb" id="n-attendu"></span></summary><ul id="attendu"></ul></details>
+    <p class="doux" id="technique" style="margin:6px 0 0;font-size:12.5px"></p></section>
+  <section class="pan dns3" id="s-nouveaux"><h3>Nouveaux et bloqués <span>24 h</span></h3>
+    <h4>Nouveaux domaines</h4><ul id="nouveaux"></ul><h4>Pubs bloquées</h4><ul id="pub"></ul></section>
 
-  <section class="bloc" aria-labelledby="t-systeme">
-    <h2 id="t-systeme">Système</h2>
-    <div class="pan"><p id="sys"></p><p id="listes"></p></div>
-  </section>
-</div>
+  <section class="pan" id="pied"><p id="listes"></p></section>
+</div></main>
 
 <dialog id="fiche" aria-labelledby="f-nom">
   <div class="fiche">
     <div class="fiche-tete"><div><h3 id="f-nom"></h3><p id="f-ip"></p></div><form method="dialog"><button class="fermer" aria-label="Fermer">×</button></form></div>
     <div class="chiffres" id="f-chiffres"></div>
-    <h4>Domaines demandés <span class="nb">24 h</span></h4><ul id="f-domaines"></ul>
-    <h4>Bloqués pour cet appareil <span class="nb">24 h</span></h4><ul id="f-bloques"></ul>
+    <h4>Domaines demandés <span>24 h</span></h4><ul id="f-domaines"></ul>
+    <h4>Bloqués pour cet appareil <span>24 h</span></h4><ul id="f-bloques"></ul>
   </div>
 </dialog>
 
@@ -281,18 +251,16 @@ const o = n => n == null ? "–" : n < 1024 ? fr(n)+" o" : n < 1048576 ? fr(n/10
 const bp = n => n == null ? ["–", ""] : n*8 < 1e6 ? [fr(n*8/1e3), "kb/s"] : [fr(n*8/1e6,1), "Mb/s"];
 const b = n => bp(n).join(" ");
 const heure = t => new Date(t*1000).toLocaleTimeString("fr-FR");
+const date = t => t ? new Date(t*1000).toLocaleDateString("fr-FR", {day:"numeric", month:"short"}) : "";
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-// Coupure des longs domaines aux points plutôt qu'au milieu d'un mot
 const dom = d => esc(d).replaceAll(".", ".<wbr>");
-// Un appareil se clique pour ouvrir sa fiche
 const qui = x => x.ip ? `<button type="button" class="qui" data-ip="${esc(x.ip)}">${esc(x.nom || x.ip)}</button>` : esc(x.nom || "");
-const date = t => new Date(t*1000).toLocaleDateString("fr-FR", {day:"numeric", month:"short"});
+const ipn = ip => ip ? ip.split(".").reduce((a, c) => a * 256 + +c, 0) : 0;
 // r = {a: texte principal, sous: ligne secondaire, v: valeur à droite, f: part 0..1 pour la barre}
 const liste = (id, rows, vide="Rien à signaler") => $(id).innerHTML = rows.length
   ? rows.map(r => `<li${r.f != null ? ` class="barre" style="--f:${r.f.toFixed(3)}"` : ""}><div class="p">${r.a}${r.sous ? `<small>${r.sous}</small>` : ""}</div><span class="v">${r.v ?? ""}</span></li>`).join("")
   : `<li class="vide">${vide}</li>`;
 const part = (xs, cle) => { const m = Math.max(1, ...xs.map(cle)); return x => cle(x) / m; };
-// Groupes de domaines dépliables ; on garde ceux ouverts d'un rafraîchissement à l'autre
 const ouverts = new Set();
 document.addEventListener("toggle", ev => { const g = ev.target.dataset?.g; if (g) ev.target.open ? ouverts.add(g) : ouverts.delete(g); }, true);
 function groupes(id, gs, vide) {
@@ -322,7 +290,7 @@ async function fiche(ip) {
 document.addEventListener("click", ev => {
   const b = ev.target.closest("button.qui");
   if (b) fiche(b.dataset.ip);
-  else if (ev.target === $("fiche")) $("fiche").close(); // clic sur le fond
+  else if (ev.target === $("fiche")) $("fiche").close();
 });
 
 const hist = [], N = 60; // 60 × 5 s = 5 min
@@ -335,86 +303,108 @@ function tracer() {
   $("aire").setAttribute("d", `${ligne("rx")}L${x(N - 1)},150L${x(dep)},150Z`);
   $("legende").textContent = `5 dernières minutes, pic ${b(m)}`;
 }
+const tuile = (id, val, sous) => { const t = $(id); t.querySelector("b").innerHTML = val; t.querySelector("p").textContent = sous; };
+const vitesse = v => v == null ? "" : v >= 1000 ? `${fr(v/1000)} Gb/s` : `${fr(v)} Mb/s`;
+const NIV = ["Critique", "Attention", "Info"];
+
+// Alertes à trois niveaux : [niveau, texte, cible]
+function alertes(e) {
+  const s = e.systeme, sante = e.sante, w = e.interfaces[e.wan] || {}, al = [];
+  const enPanne = sante.services.filter(x => x.etat !== "active");
+  if (enPanne.length) al.push([0, `${enPanne.map(x => esc(x.nom)).join(", ")} ${enPanne.length > 1 ? "ne tournent pas" : "ne tourne pas"}`, "alertes-p"]);
+  if (w.etat && w.etat !== "up") al.push([0, `Lien WAN ${esc(e.wan)} coupé`, "trafic"]);
+  const net = sante.latences.filter(x => x.nom === "Internet");
+  if (net.length && net.every(x => x.ms == null)) al.push([0, "Internet ne répond pas au ping", "alertes-p"]);
+  const m = e.dns.menaces;
+  if (m.length) al.push([0, `${pl(new Set(m.map(x => x.ip)).size, "appareil a", "appareils ont")} contacté ${pl(new Set(m.map(x => x.domaine)).size, "domaine malveillant", "domaines malveillants")}`, "s-menaces"]);
+  for (const r of e.reseaux) if (r.plage && r.baux / r.plage.taille >= .9) al.push([1, `Plage DHCP ${esc(r.nom || r.cidr)} presque pleine`, "reseaux-p"]);
+  const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
+  if (age != null && age > 48) al.push([1, `Listes de blocage vieilles de ${fr(age / 24)} j`, "alertes-p"]);
+  if (s.memoire.totale && s.memoire.dispo / s.memoire.totale < .1) al.push([1, `Mémoire presque pleine (${o(s.memoire.dispo)} libres)`, "pied"]);
+  if (s.temperature > 75) al.push([1, `Température élevée : ${fr(s.temperature)} °C`, "pied"]);
+  const nv = e.appareils.filter(x => x.nouveau).length;
+  if (nv) al.push([2, `${pl(nv, "nouvel appareil", "nouveaux appareils")} cette semaine`, "appareils"]);
+  return al.sort((a, c) => a[0] - c[0]);
+}
+
+// Baux et IP fixes fusionnés en un seul tableau
+function lignes(e) {
+  const macs = new Set(e.appareils.map(a => a.mac.toLowerCase()));
+  const nomMac = Object.fromEntries(e.appareils.filter(x => x.nom).map(x => [x.mac.toLowerCase(), x.nom]));
+  const fixes = e.ip_fixes.filter(x => !macs.has(x.mac.toLowerCase())).map(x => ({...x, nom: x.nom || nomMac[x.mac], en_ligne: true, fixe: true}));
+  return [...e.appareils, ...fixes].sort((a, c) => (c.en_ligne - a.en_ligne) || (c.nouveau - a.nouveau) || ipn(a.ip) - ipn(c.ip));
+}
+const ligneTab = x => `<tr><td class="nom"><i class="pt ${x.en_ligne ? "ok" : ""}"></i><span class="sr">${x.en_ligne ? "en ligne" : "hors ligne"}</span>${x.ip ? qui({ip: x.ip, nom: x.nom || "Sans nom"}) : esc(x.nom || "Sans nom")}`
+  + `${x.nouveau ? ' <span class="tag">nouveau</span>' : ""}${x.fixe ? ' <span class="tag">IP fixe</span>' : ""}</td>`
+  + `<td class="ip mono">${esc(x.ip)}</td><td class="m mono">${esc(x.mac)}</td><td class="r">${esc(x.reseau)}</td>`
+  + `<td class="num d">${x.debit > 0 ? b(x.debit) : "–"}</td><td class="num q">${nb(x.requetes)}</td><td class="num b">${nb(x.bloques)}</td>`
+  + `<td class="num">${x.en_ligne ? "en ligne" : date(x.vu)}</td><td class="num m">${date(x.premier)}</td></tr>`;
 
 let derniere = null;
 async function maj() {
   try {
-    const e = await (await fetch("api/etat")).json(), s = e.systeme, w = e.interfaces[e.wan] || {};
+    const e = await (await fetch("api/etat")).json(), s = e.systeme, w = e.interfaces[e.wan] || {}, sante = e.sante, d = e.dns, h = e.historique_wan;
 
-    const menaces = e.dns.menaces, nouveaux = e.appareils.filter(x => x.nouveau), points = [];
-    if (menaces.length) points.push(`<a class="puce" href="#s-menaces">${pl(new Set(menaces.map(x => x.ip)).size, "appareil a", "appareils ont")} contacté ${pl(new Set(menaces.map(x => x.domaine)).size, "domaine malveillant", "domaines malveillants")}</a>`);
-    if (nouveaux.length) points.push(`<a class="puce" href="#s-nouveaux">${pl(nouveaux.length, "nouvel appareil", "nouveaux appareils")} cette semaine</a>`);
-    const sante = e.sante;
-    const enPanne = sante.services.filter(x => x.etat !== "active");
-    if (enPanne.length) points.push(`<a class="puce" href="#sante">${enPanne.map(x => esc(x.nom)).join(", ")} ${enPanne.length > 1 ? "ne tournent pas" : "ne tourne pas"}</a>`);
-    const net = sante.latences.filter(x => x.nom === "Internet");
-    if (net.length && net.every(x => x.ms == null)) points.push(`<a class="puce" href="#sante">Internet ne répond pas au ping</a>`);
-    for (const r of e.reseaux) if (r.plage && r.baux / r.plage.taille >= .9)
-      points.push(`<a class="puce" href="#reseaux">Plage DHCP ${esc(r.nom)} presque pleine</a>`);
-    $("phare").className = "phare " + (points.length ? "attention" : "calme");
-    $("etat").textContent = points.length ? `${pl(points.length, "point", "points")} à regarder` : "Tout est calme";
-    $("points").innerHTML = points.join("");
+    const al = alertes(e), grave = al.filter(a => a[0] < 2).length;
+    $("phare").className = "phare " + (al.some(a => a[0] === 0) ? "critique" : grave ? "attention" : "calme");
+    $("etat").textContent = grave ? `${pl(grave, "point", "points")} à regarder` : "Tout est calme";
+    $("n-alertes").textContent = al.length ? fr(al.length) : "";
+    $("alertes").innerHTML = al.length ? al.map(([n, t, c]) => `<li class="al n${n}"><span class="niv">${NIV[n]}</span><a href="#${c}">${t}</a></li>`).join("") : `<li class="vide">Rien à signaler</li>`;
 
-    const [rx, urx] = bp(w.rx), [tx, utx] = bp(w.tx);
-    $("rx").innerHTML = `${rx}<small>${urx}</small>`;
-    $("tx").innerHTML = `${tx}<small>${utx}</small>`;
+    const lignesApp = lignes(e), enLigne = e.appareils.filter(x => x.en_ligne).length + lignesApp.filter(x => x.fixe).length;
+    const [rx, urx] = bp(w.rx), [tx, utx] = bp(w.tx), net = sante.latences.find(x => x.nom === "Internet"), pass = sante.latences.find(x => x.nom === "Passerelle");
+    const ms = x => x && x.ms != null ? fr(x.ms, x.ms < 10 ? 1 : 0) : "–";
+    const bloq = d.bloques_24h.pub + d.bloques_24h.menaces, nvx = e.appareils.filter(x => x.nouveau).length;
+    tuile("k-rx", `${rx}<small>${urx}</small>`, h ? `Aujourd'hui ${o(h.jour.rx)}` : "");
+    tuile("k-tx", `${tx}<small>${utx}</small>`, h ? `Aujourd'hui ${o(h.jour.tx)}` : "");
+    tuile("k-lat", `${ms(net)}<small>${net && net.ms != null ? "ms" : ""}</small>`, pass ? `Passerelle ${ms(pass)}${pass.ms != null ? " ms" : ""}` : "");
+    tuile("k-app", `${fr(enLigne)}<small>sur ${fr(lignesApp.length)}</small>`, nvx ? `+${fr(nvx)} ${nvx > 1 ? "nouveaux" : "nouveau"}` : "aucun nouveau");
+    tuile("k-dns", fr(d.requetes_24h), `dont ${fr(d.technique.n)} techniques`);
+    tuile("k-blo", `${fr(d.requetes_24h ? bloq * 100 / d.requetes_24h : 0, 1)}<small>%</small>`, `${pl(d.bloques_24h.pub, "pub", "pubs")}, ${pl(d.bloques_24h.menaces, "menace", "menaces")}`);
+
     hist.push({rx: w.rx || 0, tx: w.tx || 0}); if (hist.length > N) hist.shift();
     tracer();
-    const h = e.historique_wan;
     $("cumul").textContent = h ? `Aujourd'hui ${o(h.jour.rx)} reçus et ${o(h.jour.tx)} envoyés. Ce mois-ci ${o(h.mois.rx)} reçus et ${o(h.mois.tx)} envoyés.` : "";
-
-    const lien = i => e.interfaces[i] || {};
-    const vitesse = v => v == null ? "" : v >= 1000 ? `${fr(v/1000)} Gb/s` : `${fr(v)} Mb/s`;
-    const w0 = lien(e.wan);
-    $("lien-wan").textContent = `WAN ${e.wan} ${w0.etat === "up" ? "connecté" : "coupé"}${w0.vitesse ? " à " + vitesse(w0.vitesse) : ""}`;
+    $("lien-wan").textContent = `${e.wan} ${w.etat === "up" ? "connecté" : "coupé"}${w.vitesse ? " à " + vitesse(w.vitesse) : ""}`;
     const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
     $("sante").innerHTML = [
-      ...sante.latences.map(x => `<div class="indic"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${esc(x.nom)} <span>${x.ms == null ? "sans réponse" : fr(x.ms, x.ms < 10 ? 1 : 0) + " ms"}</span></div>`),
+      ...sante.latences.map(x => `<div class="indic"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${esc(x.nom)} <span>${x.ms == null ? "sans réponse" : ms(x) + " ms"}</span></div>`),
       ...sante.services.map(x => `<div class="indic"><i class="pt ${x.etat === "active" ? "ok" : "ko"}"></i>${esc(x.nom)} <span>${x.etat === "active" ? "actif" : esc(x.etat)}</span></div>`),
-      age == null ? "" : `<div class="indic"><i class="pt ${age < 48 ? "ok" : "ko"}"></i>Listes <span>mises à jour il y a ${age < 1 ? "moins d'une heure" : age < 48 ? fr(age) + " h" : fr(age / 24) + " j"}</span></div>`,
+      age == null ? "" : `<div class="indic"><i class="pt ${age < 48 ? "ok" : "att"}"></i>Listes <span>il y a ${age < 1 ? "moins d'1 h" : age < 48 ? fr(age) + " h" : fr(age / 24) + " j"}</span></div>`,
     ].join("");
-    $("reseaux").innerHTML = e.reseaux.map(r => {
-      const l = lien(r.interface), f = r.plage ? r.baux / r.plage.taille : 0;
-      return `<div class="res"><h3>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : "ko"}" title="${esc(l.etat || "inconnu")}"></i></h3>
-        <p>${esc(r.cidr)}${r.interface ? ` sur ${esc(r.interface)}` : ""}${l.vitesse ? `, ${vitesse(l.vitesse)}` : ""}</p>
-        <div class="chiffres"><div><b>${fr(r.en_ligne)}</b><span>en ligne</span></div><div><b>${fr(r.baux)}</b><span>${r.baux > 1 ? "baux" : "bail"}</span></div><div><b>${fr(r.ip_fixes)}</b><span>${r.ip_fixes > 1 ? "IP fixes" : "IP fixe"}</span></div></div>
-        ${r.plage ? `<div class="jauge${f >= .9 ? " pleine" : ""}" style="--f:${Math.min(f, 1).toFixed(3)}"><i></i></div><p>DHCP de ${esc(r.plage.debut)} à ${esc(r.plage.fin)}, ${fr(Math.round(f * 100))} % occupé</p>` : "<p>Pas de plage DHCP</p>"}
-      </div>`;
-    }).join("");
 
-    liste("menaces", menaces.map(x => ({a: `<span class="menace">${dom(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes")})));
-    const ligneApp = x => ({a: `<i class="pt ${x.en_ligne ? "ok" : ""}"></i>` + (x.ip ? qui({ip: x.ip, nom: x.nom || "Sans nom"}) : esc(x.nom || "Sans nom")),
-      sous: `<span>${esc(x.ip)}</span><span>${esc(x.mac)}</span>`});
-    // Les plus récents d'abord ; le reste est dans « Appareils »
-    const recents = [...nouveaux].sort((a, b) => b.premier - a.premier), autres = recents.length - 8;
-    liste("nouveaux-app", recents.slice(0, 8).map(x => ({...ligneApp(x), v: `vu le ${date(x.premier)}`})), "Aucun cette semaine");
-    if (autres > 0) $("nouveaux-app").insertAdjacentHTML("beforeend", `<li class="vide">et ${pl(autres, "autre", "autres")}, voir Appareils</li>`);
-    const app = [...e.appareils].sort((a, b) => (b.en_ligne - a.en_ligne) || (b.nouveau - a.nouveau));
-    $("n-appareils").textContent = app.length ? `${fr(app.filter(x => x.en_ligne).length)} en ligne sur ${fr(app.length)}` : "";
-    liste("appareils", app.map(x => ({...ligneApp(x), v: x.nouveau ? '<span class="tag">nouveau</span>' : ""})), "Aucun bail DHCP");
-    const nomMac = Object.fromEntries(e.appareils.filter(x => x.nom).map(x => [x.mac.toLowerCase(), x.nom]));
-    $("n-fixes").textContent = e.ip_fixes.length ? fr(e.ip_fixes.length) : "";
-    liste("fixes", e.ip_fixes.map(x => ({a: qui({ip: x.ip, nom: x.nom || nomMac[x.mac]}), sous: `<span>${esc(x.mac)}</span><span>${esc(x.interface)}</span>`, v: x.nom || nomMac[x.mac] ? esc(x.ip) : ""})), "Aucune");
+    $("s-menaces").hidden = !d.menaces.length;
+    liste("menaces", d.menaces.map(x => ({a: `<span class="menace">${dom(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes")})));
+    $("s-sansdns").hidden = !e.sans_dns.length;
     liste("sansdns", e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu)})));
-    const fc = part(e.gros_consommateurs, x => x.debit);
-    liste("conso", e.gros_consommateurs.map(x => ({a: qui(x), v: b(x.debit), f: fc(x)})), "Calme");
-    const fp = part(e.dns.pub_bloquee, x => x.n);
-    liste("pub", e.dns.pub_bloquee.map(x => ({a: qui(x), v: pl(x.n, "pub", "pubs"), f: fp(x)})), "Aucune");
-    $("total-dns").textContent = `${pl(e.dns.requetes_24h, "requête", "requêtes")} en 24 h`;
-    const fq = part(e.dns.clients, x => x.n);
-    liste("clients", e.dns.clients.map(x => ({a: qui(x), v: pl(x.n, "requête", "requêtes"), f: fq(x)})));
-    groupes("domaines", e.dns.groupes, "Aucune requête");
-    $("n-attendu").textContent = pl(e.dns.attendu.n, "requête", "requêtes");
-    liste("attendu", e.dns.attendu.domaines.map(([d, n]) => ({a: dom(d), v: fr(n)})), "Aucun");
-    liste("nouveaux", e.dns.nouveaux_domaines.map(([d, t]) => ({a: dom(d), v: heure(t)})));
-    liste("interfaces", Object.entries(e.interfaces).map(([i, d]) => ({
-      a: `<i class="pt ${d.etat === "up" ? "ok" : d.etat === "down" ? "ko" : ""}"></i>${esc(i)}`,
-      sous: [d.etat === "down" ? "<span>coupé</span>" : "", d.vitesse ? `<span>${vitesse(d.vitesse)}</span>` : "", d.erreurs ? `<span>${pl(d.erreurs, "erreur", "erreurs")}</span>` : "", d.pertes ? `<span>${pl(d.pertes, "paquet perdu", "paquets perdus")}</span>` : ""].join(""),
-      v: `↓ ${b(d.rx)}   ↑ ${b(d.tx)}`})));
 
-    $("sys").textContent = `En marche depuis ${fr(s.uptime/86400,1)} j, charge ${fr(s.charge[0],2)}, mémoire libre ${o(s.memoire.dispo)} sur ${o(s.memoire.totale)}`
-      + (s.temperature ? `, ${fr(s.temperature)} °C` : "") + ".";
-    $("listes").textContent = `Listes de blocage : ${nb(s.listes.menaces)} domaines malveillants, ${nb(s.listes.pub)} domaines de pub, ${nb(s.listes.ip)} IP.`;
+    $("n-appareils").textContent = `${fr(enLigne)} en ligne sur ${fr(lignesApp.length)}`;
+    $("tb").innerHTML = lignesApp.map(ligneTab).join("") || `<tr><td class="doux">Aucun appareil</td></tr>`;
+
+    $("n-res").textContent = pl(e.reseaux.length, "réseau", "réseaux");
+    $("reseaux").innerHTML = e.reseaux.map(r => {
+      const l = e.interfaces[r.interface] || {}, f = r.plage ? r.baux / r.plage.taille : 0;
+      return `<div class="res"><h4>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : "ko"}" title="${esc(l.etat || "inconnu")}"></i></h4>
+        <p class="mono">${esc(r.cidr)}${l.vitesse ? ` · ${vitesse(l.vitesse)}` : ""}</p>
+        <p>${fr(r.en_ligne)} en ligne · ${pl(r.baux, "bail", "baux")} · ${pl(r.ip_fixes, "IP fixe", "IP fixes")}</p>
+        ${r.plage ? `<div class="jauge${f >= .9 ? " pleine" : ""}" style="--f:${Math.min(f, 1).toFixed(3)}"><i></i></div><p>DHCP ${fr(Math.round(f * 100))} % occupé</p>` : "<p>Pas de plage DHCP</p>"}</div>`;
+    }).join("");
+    $("interfaces").innerHTML = Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.etat === "up" ? "ok" : x.etat === "down" ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(x.etat)}</span></td>`
+      + `<td class="num">${x.vitesse ? vitesse(x.vitesse) : x.etat === "down" ? "coupé" : ""}</td><td class="num">↓ ${b(x.rx)}</td><td class="num">↑ ${b(x.tx)}</td><td class="num doux">${x.erreurs ? pl(x.erreurs, "erreur", "erreurs") : ""}</td></tr>`).join("");
+
+    $("total-dns").textContent = pl(d.requetes_24h, "requête", "requêtes");
+    const fq = part(d.clients, x => x.n);
+    liste("clients", d.clients.map(x => ({a: qui(x), v: fr(x.n), f: fq(x)})));
+    groupes("domaines", d.groupes, "Aucune requête");
+    $("n-attendu").textContent = pl(d.attendu.n, "requête", "requêtes");
+    liste("attendu", d.attendu.domaines.map(([x, n]) => ({a: dom(x), v: fr(n)})), "Aucun");
+    $("technique").textContent = d.technique.n ? `Trafic technique (DNS inverse, mDNS, WPAD…) : ${pl(d.technique.n, "requête", "requêtes")}.` : "";
+    liste("nouveaux", d.nouveaux_groupes.map(g => ({a: dom(g.domaine), sous: pl(g.n, "nouveau domaine", "nouveaux domaines"), v: heure(g.dernier)})), "Aucun");
+    const fp = part(d.pub_bloquee, x => x.n);
+    liste("pub", d.pub_bloquee.map(x => ({a: qui(x), v: pl(x.n, "pub", "pubs"), f: fp(x)})), "Aucune");
+
+    $("sys").textContent = `Charge ${fr(s.charge[0], 2)} · mémoire libre ${o(s.memoire.dispo)} sur ${o(s.memoire.totale)}` + (s.temperature ? ` · ${fr(s.temperature)} °C` : "");
+    $("listes").textContent = `En marche depuis ${fr(s.uptime / 86400, 1)} j. Listes de blocage : ${nb(s.listes.menaces)} domaines malveillants, ${nb(s.listes.pub)} domaines de pub, ${nb(s.listes.ip)} IP.`;
 
     derniere = e.maintenant;
     document.body.classList.remove("perime");
