@@ -34,7 +34,7 @@ services.vigie = {
   wan = "enp1s0";
   # ecoute = "0.0.0.0:8080";
   # listes = "/var/lib/listes";
-  # reseaux = [ "192.168.1.0/24" ];
+  # reseaux = [ "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" ];  # défaut : plages privées RFC 1918
   # Trafic attendu, mis à part du classement des domaines (défaut : domaines NTP courants)
   # domainesConnus = [ "pool.ntp.org" "cache.nixos.org" "maison.example" ];
   # Noms par IP, en plus de ceux déduits de dnsmasq (dhcp-host "mac,ip,nom", host-record "nom,ip")
@@ -59,7 +59,7 @@ root (lecture de conntrack) mais confiné (`ProtectSystem=strict`, `MemoryMax=96
 | `VIGIE_JOURNAL_DNS` | `/run/dnsmasq/requetes.log` | journal des requêtes dnsmasq |
 | `VIGIE_BAUX` | `/var/lib/dnsmasq/dnsmasq.leases` | baux DHCP |
 | `VIGIE_PAGE` | page embarquée | fichier HTML servi à la place de la page embarquée |
-| `VIGIE_RESEAUX` | les 4 réseaux privés du module | réseaux locaux, séparés par des espaces |
+| `VIGIE_RESEAUX` | `10.0.0.0/8 172.16.0.0/12 192.168.0.0/16` | blocs locaux (appartenance d'une IP) ; les cartes « Réseaux » sont les sous-réseaux des interfaces hors WAN dans ces blocs |
 | `VIGIE_DHCP` | aucune (le module les déduit de `services.dnsmasq.settings.dhcp-range`) | plages DHCP `nom,début,fin`, séparées par des espaces |
 | `VIGIE_SONDES` | `1.1.1.1` | cibles de ping pour la latence Internet |
 | `VIGIE_SERVICES` | `dnsmasq unbound nftables` | unités systemd surveillées |

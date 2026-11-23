@@ -58,7 +58,7 @@ fn cfg() -> &'static Config {
         journal_dns: env("VIGIE_JOURNAL_DNS", "/run/dnsmasq/requetes.log"),
         baux: env("VIGIE_BAUX", "/var/lib/dnsmasq/dnsmasq.leases"),
         page: std::env::var("VIGIE_PAGE").ok(),
-        locaux: env("VIGIE_RESEAUX", "192.168.1.0/24 10.20.0.0/24 10.30.0.0/24 10.99.99.0/24")
+        locaux: env("VIGIE_RESEAUX", "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16")
             .split_whitespace()
             .map(|n| cidr(n).unwrap_or_else(|| panic!("VIGIE_RESEAUX invalide : {n}")))
             .collect(),
@@ -516,6 +516,18 @@ fn adresses_interfaces() -> Vec<(String, u32, u32, String)> {
     r
 }
 
+/// Réseaux à afficher : les sous-réseaux des interfaces (hors WAN) dont l'adresse est dans un bloc local.
+/// Les blocs configurés (/8, /16…) sont trop larges pour faire des cartes ; sans interface connue, on les montre tels quels.
+fn reseaux_affiches(adresses: &[(String, u32, u32, String)], wan: &str, locaux: &[(u32, u32)]) -> Vec<(u32, u32)> {
+    let dans = |ip: u32| locaux.iter().any(|&(r, m)| ip & m == r);
+    let mut v: Vec<(u32, u32)> = adresses.iter()
+        .filter(|a| a.0 != wan && a.2.count_ones() <= 30 && ip_u32(&a.3).is_some_and(dans))
+        .map(|a| (a.1, a.2)).collect();
+    v.sort_unstable();
+    v.dedup();
+    if v.is_empty() { locaux.to_vec() } else { v }
+}
+
 /// `time=1.23 ms` dans la sortie de ping.
 fn analyser_ping(sortie: &str) -> Option<f64> {
     let t = &sortie[sortie.find("time=")? + 5..];
@@ -742,7 +754,7 @@ fn etat() -> Value {
     let en_ligne = |mac: &str| arp.iter().any(|v| v.1 == mac);
     let ip_fixes: Vec<_> = arp.iter().filter(|v| !baux.iter().any(|b| b.0 == v.1)).collect();
     let dans = |ip: &str, r: u32, m: u32| ip_u32(ip).is_some_and(|a| a & m == r);
-    let reseaux: Vec<Value> = cfg().locaux.iter().map(|&(r, m)| {
+    let reseaux: Vec<Value> = reseaux_affiches(&adresses, &cfg().wan, &cfg().locaux).into_iter().map(|(r, m)| {
         let interface = adresses.iter().find(|a| a.1 == r && a.2 == m);
         let p = cfg().dhcp.iter().find(|p| p.1 & m == r);
         json!({
@@ -986,5 +998,20 @@ mod tests {
         let long: Vec<String> = (0..40).map(|i| format!(r#"{{"rx":{i},"tx":0}}"#)).collect();
         let j = format!(r#"{{"interfaces":[{{"traffic":{{"day":[{}],"month":[{{"rx":0,"tx":0}}]}}}}]}}"#, long.join(","));
         assert_eq!(analyser_vnstat(j.as_bytes()).map(|v| (v.jours.len(), v.jours[0].0)), Some((30, 10)));
+    }
+
+    #[test]
+    fn reseaux_larges() {
+        let blocs: Vec<_> = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"].iter().filter_map(|c| cidr(c)).collect();
+        let a = |i: &str, c: &str, ip: &str| { let (r, m) = cidr(c).unwrap(); (i.to_string(), r, m, ip.to_string()) };
+        let adr = vec![a("wan", "192.0.2.0/24", "192.0.2.2"), a("lan", "192.168.1.0/24", "192.168.1.1"), a("iot", "10.20.0.0/24", "10.20.0.1"),
+            a("vpn", "10.8.0.1/32", "10.8.0.1"), a("ts", "100.64.0.0/10", "100.64.0.5"), a("priv", "172.16.0.0/16", "172.16.0.1")];
+        let r = reseaux_affiches(&adr, "wan", &blocs);
+        assert_eq!(r, vec![cidr("10.20.0.0/24").unwrap(), cidr("172.16.0.0/16").unwrap(), cidr("192.168.1.0/24").unwrap()]);
+        assert_eq!(reseaux_affiches(&[], "wan", &blocs), blocs);
+        // appartenance d'une IP aux blocs larges
+        let dans = |ip: &str| blocs.iter().any(|&(r, m)| ip_u32(ip).unwrap() & m == r);
+        assert!(dans("10.255.255.254") && dans("172.31.0.1") && dans("192.168.200.3") && !dans("172.32.0.1") && !dans("192.169.0.1") && !dans("11.0.0.1"));
+        assert_eq!(cidr("172.16.0.0/12"), Some((0xac10_0000, 0xfff0_0000)));
     }
 }

@@ -33,8 +33,8 @@ in
     listes = lib.mkOption { type = lib.types.str; default = "/var/lib/listes"; description = "Dossier des listes de blocage (menaces.hosts, pub.hosts, ip.txt)."; };
     reseaux = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "192.168.1.0/24" "10.20.0.0/24" "10.30.0.0/24" "10.99.99.0/24" ];
-      description = "Réseaux considérés comme locaux.";
+      default = [ "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" ];
+      description = "Blocs considérés comme locaux ; la page affiche les sous-réseaux des interfaces (hors WAN) qui s'y trouvent.";
     };
     dhcp = lib.mkOption {
       type = lib.types.listOf lib.types.str;
