@@ -24,6 +24,14 @@
   small, .doux { color:var(--doux); }
   :focus-visible { outline:2px solid var(--mer); outline-offset:2px; border-radius:6px; }
   .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+  #q { flex:0 1 300px; min-width:120px; font:inherit; padding:6px 10px; border-radius:9px; border:1px solid var(--bord); color:var(--texte); background:color-mix(in srgb, var(--surface) 60%, transparent); }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 8px; }
+  .chips button { font:inherit; font-size:12.5px; padding:2px 10px; border-radius:999px; border:1px solid var(--filet); background:none; color:var(--texte); cursor:pointer; }
+  .chips button[aria-pressed=true], .chips button[aria-selected=true] { font-weight:650; border-color:var(--mer); background:color-mix(in srgb, var(--mer) 22%, transparent); }
+  th button { font:inherit; text-transform:inherit; letter-spacing:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; }
+  th[aria-sort=ascending] button::after { content:" ▲"; } th[aria-sort=descending] button::after { content:" ▼"; }
+  li.plus { justify-content:center; } .plus button { font:inherit; font-size:12.5px; color:var(--mer); background:none; border:0; padding:2px 0; cursor:pointer; }
+  .plus:not(li) { text-align:center; margin-top:4px; }
   .num, td.num, th.num { font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
   .mono { font:12.5px ui-monospace, SFMono-Regular, Menlo, monospace; }
 
@@ -165,6 +173,7 @@
   .jauge i { display:block; height:100%; width:calc(var(--f) * 100%); background:linear-gradient(180deg, color-mix(in srgb, var(--mer) 50%, #fff), var(--mer) 60%); }
   .jauge.pleine i { background:var(--attention); }
   .liens td { height:28px; font-size:13px; }
+  .fb { height:40px; margin-top:8px; }
   #pied { font-size:12.5px; color:var(--doux); }
   #pied p { margin:0; }
 
@@ -183,16 +192,21 @@
   .chiffres b { display:block; font-size:20px; font-weight:620; letter-spacing:-.03em; line-height:1.1; }
   .chiffres span { font-size:12.5px; color:var(--doux); }
 
+  @media (min-width:1100px) {
+    dialog { position:fixed; z-index:5; inset:0 0 0 auto; margin:0; width:440px; height:100dvh; max-height:100dvh; border-radius:14px 0 0 14px; overflow:auto; }
+    body.lateral .page { padding-right:456px; }
+  }
+
   body.perime .page { filter:grayscale(1); opacity:.5; transition:opacity .3s, filter .3s; }
 
   /* Téléphone : le tableau devient une liste à deux lignes */
   @media (max-width:699px) {
     .m { display:none; }
     thead { display:none; }
-    tbody tr { display:grid; grid-template-columns:1fr auto; border-top:1px solid var(--filet); padding:4px 0; }
+    tbody tr { display:grid; grid-template-columns:1fr auto auto; column-gap:12px; border-top:1px solid var(--filet); padding:4px 0; }
     td { border:0; height:auto; padding:1px 0; }
-    td.nom { max-width:none; } td.nom { grid-column:1; } td.d { grid-column:2; grid-row:1; }
-    td.ip { grid-column:1; } td.r { grid-column:2; grid-row:2; }
+    td.nom { max-width:none; grid-column:1 / 3; grid-row:1; } td.d { grid-column:3; grid-row:1; }
+    td.ip { grid-column:1; grid-row:2; } td.r { grid-column:2; grid-row:2; } td.vu { grid-column:3; grid-row:2; }
     td.q, td.b { display:none; }
     .phare small, #sys { display:none; }
     dialog { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; border-radius:0; }
@@ -209,6 +223,7 @@
 <div class="halos" aria-hidden="true"><i></i><i></i><i></i></div>
 <header>
   <h1>Vigie</h1>
+  <input id="q" type="search" placeholder="Rechercher ( / )" aria-label="Rechercher un appareil ou un domaine" autocomplete="off">
   <p id="sys"></p>
   <div id="phare" class="phare" role="status"><i aria-hidden="true"></i><div><strong id="etat">Connexion…</strong><small id="maj"></small></div></div>
 </header>
@@ -239,7 +254,8 @@
   <section class="pan" id="s-sansdns" hidden><h3>Connexions sans DNS <span>24 h</span></h3><p>Vers une IP jamais annoncée par le DNS : souvent normal, à surveiller pour les objets connectés.</p><ul id="sansdns"></ul></section>
 
   <section class="pan appareils" id="appareils"><h3>Appareils <span id="n-appareils"></span></h3>
-    <div class="defile"><table><thead><tr><th>Nom</th><th>IP</th><th class="m">MAC</th><th>Réseau</th><th class="num">Débit</th><th class="num q">Req. 24 h</th><th class="num b">Bloquées</th><th class="num">Dernier vu</th><th class="num m">Premier vu</th></tr></thead><tbody id="tb"></tbody></table></div></section>
+    <div class="chips" id="chips" role="group" aria-label="Filtres"></div>
+    <div class="defile"><table><thead><tr><th data-k="nom"><button>Nom</button></th><th data-k="ip"><button>IP</button></th><th class="m" data-k="mac"><button>MAC</button></th><th data-k="reseau"><button>Réseau</button></th><th class="num" data-k="debit"><button>Débit</button></th><th class="num q" data-k="requetes"><button>Req. 24 h</button></th><th class="num b" data-k="bloques"><button>Bloquées</button></th><th class="num" data-k="vu"><button>Dernier vu</button></th><th class="num m" data-k="premier"><button>Premier vu</button></th></tr></thead><tbody id="tb"></tbody></table></div><div class="plus" id="plus-app"></div></section>
   <section class="pan cote" id="reseaux-p"><h3>Réseaux <span id="n-res"></span></h3><div class="reseaux" id="reseaux"></div>
     <h4>Liens</h4><div class="liens-d"><table class="liens"><tbody id="interfaces"></tbody></table></div></section>
 
@@ -248,15 +264,16 @@
     <details class="attendu"><summary>Trafic attendu <span class="nb" id="n-attendu"></span></summary><ul id="attendu"></ul></details>
     <p class="doux" id="technique" style="margin:6px 0 0;font-size:12.5px"></p></section>
   <section class="pan dns3" id="s-nouveaux"><h3>Nouveaux et bloqués <span>24 h</span></h3>
-    <h4>Nouveaux domaines</h4><ul id="nouveaux"></ul><h4>Pubs bloquées</h4><ul id="pub"></ul></section>
+    <div class="chips" id="onglets" role="tablist"></div><ul id="liste-onglet" role="tabpanel"></ul></section>
 
   <section class="pan" id="pied"><p id="listes"></p></section>
 </div></main>
 
 <dialog id="fiche" aria-labelledby="f-nom">
   <div class="fiche">
-    <div class="fiche-tete"><div><h3 id="f-nom"></h3><p id="f-ip"></p></div><form method="dialog"><button class="fermer" aria-label="Fermer">×</button></form></div>
+    <div class="fiche-tete"><div><h3 id="f-nom"></h3><p id="f-ip"></p><p id="f-vu"></p></div><form method="dialog"><button class="fermer" aria-label="Fermer">×</button></form></div>
     <div class="chiffres" id="f-chiffres"></div>
+    <h4>Requêtes par heure <span>24 h</span></h4><div id="f-h"><div class="mini fb"></div></div>
     <h4>Domaines demandés <span>24 h</span></h4><ul id="f-domaines"></ul>
     <h4>Bloqués pour cet appareil <span>24 h</span></h4><ul id="f-bloques"></ul>
   </div>
@@ -276,47 +293,85 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const dom = d => esc(d).replaceAll(".", ".<wbr>");
 const qui = x => x.ip ? `<button type="button" class="qui" data-ip="${esc(x.ip)}">${esc(x.nom || x.ip)}</button>` : esc(x.nom || "");
 const ipn = ip => ip ? ip.split(".").reduce((a, c) => a * 256 + +c, 0) : 0;
-// r = {a: texte principal, sous: ligne secondaire, v: valeur à droite, f: part 0..1 pour la barre}
-const liste = (id, rows, vide="Rien à signaler") => $(id).innerHTML = rows.length
-  ? rows.map(r => `<li${r.f != null ? ` class="barre" style="--f:${r.f.toFixed(3)}"` : ""}><div class="p">${r.a}${r.sous ? `<small>${r.sous}</small>` : ""}</div><span class="v">${r.v ?? ""}</span></li>`).join("")
-  : `<li class="vide">${vide}</li>`;
+// Préférences de l'interface, gardées dans le navigateur (jamais bloquant) ; la recherche n'y est pas
+const ui = {per: "5m", tri: {k: "etat", d: 1}, filt: [], lim: {}, ouv: {}, onglet: "nouv", tout: false, q: ""};
+try { Object.assign(ui, JSON.parse(localStorage.getItem("vigie") || "{}"), {q: ""}); } catch (err) {}
+const sauver = () => { try { localStorage.setItem("vigie", JSON.stringify({...ui, q: undefined})); } catch (err) {} };
+let E = null, lignesApp = [], ouvert = null; // dernier état reçu, lignes du tableau, appareil de la fiche
+
+// Réécrit une zone seulement si elle change, en rendant le focus au bouton qui l'avait
+const CLES = ["f", "plus", "o", "ip", "tt"];
+function poser(id, h) {
+  const el = $(id);
+  if (el._h === h) return;
+  const a = document.activeElement, cle = el.contains(a) && CLES.find(k => a.dataset[k] != null);
+  el._h = h; el.innerHTML = h;
+  if (cle) el.querySelector(`[data-${cle}="${a.dataset[cle]}"]`)?.focus();
+}
+const rech = () => ui.q.trim().toLowerCase();
+// r = {a: texte principal, sous: ligne secondaire, v: valeur à droite, f: part 0..1 pour la barre, t: texte brut (recherche, infobulle)}
+// Sur la page : filtrée par la recherche, 8 lignes puis « Voir les n autres » ; brut = sans filtre ni limite (fiche)
+function liste(id, rows, vide = "Rien à signaler", brut) {
+  const f = brut ? "" : rech(), tous = f ? rows.filter(r => (r.t || "").toLowerCase().includes(f)) : rows;
+  const ouv = brut || ui.lim[id], vus = ouv ? tous : tous.slice(0, 8), reste = tous.length - vus.length;
+  poser(id, tous.length ? vus.map(r => `<li${r.f != null ? ` class="barre" style="--f:${r.f.toFixed(3)}"` : ""}><div class="p une" title="${esc(r.t)}">${r.a}${r.sous ? `<small>${r.sous}</small>` : ""}</div><span class="v">${r.v ?? ""}</span></li>`).join("")
+    + (brut ? "" : reste > 0 ? `<li class="plus"><button data-plus="${id}">Voir les ${fr(reste)} autres</button></li>` : ouv && tous.length > 8 ? `<li class="plus"><button data-plus="${id}">Réduire</button></li>` : "")
+    : `<li class="vide">${f ? "Aucun résultat" : vide}</li>`);
+}
 const part = (xs, cle) => { const m = Math.max(1, ...xs.map(cle)); return x => cle(x) / m; };
-const ouverts = new Set();
-document.addEventListener("toggle", ev => { const g = ev.target.dataset?.g; if (g) ev.target.open ? ouverts.add(g) : ouverts.delete(g); }, true);
-function groupes(id, gs, vide) {
+document.addEventListener("toggle", ev => { const g = ev.target.dataset?.g; if (g) { ev.target.open ? ui.ouv[g] = 1 : delete ui.ouv[g]; sauver(); } }, true);
+function groupes(id, gs, vide, brut) {
   const f = part(gs, g => g.n);
   liste(id, gs.map(g => {
     const cle = id + ":" + g.domaine, reste = g.nb_sous - g.sous.length;
     const a = g.nb_sous === 1 ? dom(g.sous[0][0])
-      : `<details data-g="${esc(cle)}"${ouverts.has(cle) ? " open" : ""}><summary>${dom(g.domaine)}<span class="nb">${pl(g.nb_sous, "sous-domaine", "sous-domaines")}</span></summary>`
+      : `<details data-g="${esc(cle)}"${ui.ouv[cle] ? " open" : ""}><summary>${dom(g.domaine)}<span class="nb">${pl(g.nb_sous, "sous-domaine", "sous-domaines")}</span></summary>`
         + `<ul class="sous">${g.sous.map(([d, n]) => `<li><div class="p">${dom(d)}</div><span class="v">${fr(n)}</span></li>`).join("")}`
         + `${reste > 0 ? `<li class="vide">et ${pl(reste, "autre", "autres")}</li>` : ""}</ul></details>`;
-    return {a, v: pl(g.n, "requête", "requêtes"), f: f(g)};
-  }), vide);
+    return {a, v: pl(g.n, "requête", "requêtes"), f: f(g), t: g.domaine + " " + g.sous.map(x => x[0]).join(" ")};
+  }), vide, brut);
 }
 async function fiche(ip) {
   try {
-    const f = await (await fetch("api/appareil?ip=" + encodeURIComponent(ip))).json();
-    $("f-nom").textContent = f.nom || f.ip;
-    $("f-ip").textContent = f.nom ? f.ip : "";
+    const f = await (await fetch("api/appareil?ip=" + encodeURIComponent(ip))).json(), x = lignesApp.find(l => l.ip === ip) || {};
+    $("f-nom").textContent = f.nom || x.nom || ip;
+    $("f-ip").textContent = [ip, x.mac, x.reseau, x.fixe ? "IP fixe" : x.bail ? "bail DHCP" : ""].filter(Boolean).join(" · ");
+    $("f-vu").textContent = x.premier || x.vu ? `Premier vu ${date(x.premier)} · ${x.en_ligne ? "en ligne" : "dernier vu " + date(x.vu)}` : "";
     $("f-chiffres").innerHTML = [[f.requetes_24h, "requête", "requêtes"], [f.pub, "pub bloquée", "pubs bloquées"], [f.menaces, "menace", "menaces"], [f.attendu.n, "attendue", "attendues"]]
       .map(([n, un, plus]) => `<div><b>${fr(n)}</b><span>${n > 1 ? plus : un}</span></div>`).join("");
-    groupes("f-domaines", f.groupes, "Aucune requête");
-    liste("f-bloques", f.bloques.map(x => ({a: x.liste === "menaces" ? `<span class="menace">${dom(x.domaine)}</span>` : dom(x.domaine),
-      sous: x.liste === "menaces" ? "domaine malveillant" : "publicité", v: pl(x.n, "fois", "fois")})), "Rien de bloqué");
-    if (!$("fiche").open) $("fiche").showModal();
+    mini("f-h", f.par_heure, 1);
+    groupes("f-domaines", f.groupes, "Aucune requête", 1);
+    liste("f-bloques", f.bloques.map(x => ({a: x.liste === "menaces" ? `<span class="menace">${dom(x.domaine)}</span>` : dom(x.domaine), t: x.domaine,
+      sous: x.liste === "menaces" ? "domaine malveillant" : "publicité", v: pl(x.n, "fois", "fois")})), "Rien de bloqué", 1);
+    const d = $("fiche");
+    if (!d.open) {
+      ouvert = ip;
+      if (matchMedia("(min-width:1100px)").matches) { d.show(); document.body.classList.add("lateral"); } else d.showModal();
+    }
   } catch (err) { /* vigie injoignable : l'en-tête le signale déjà */ }
 }
+$("fiche").addEventListener("close", () => { document.body.classList.remove("lateral"); document.querySelector(`.qui[data-ip="${ouvert}"]`)?.focus(); });
+const calme = () => matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
 document.addEventListener("click", ev => {
-  const b = ev.target.closest("button.qui");
-  if (b) fiche(b.dataset.ip);
-  else if (ev.target === $("fiche")) $("fiche").close();
+  const t = ev.target, bt = t.closest("button"), al = t.closest(".al a");
+  if (bt?.classList.contains("qui")) fiche(bt.dataset.ip);
+  else if (t === $("fiche")) $("fiche").close();
+  else if (bt?.dataset.plus) { ui.lim[bt.dataset.plus] = !ui.lim[bt.dataset.plus]; sauver(); rendre(); }
+  else if (bt?.dataset.f) { const k = bt.dataset.f; ui.filt = ui.filt.includes(k) ? ui.filt.filter(x => x !== k) : [...ui.filt, k]; sauver(); rendre(); }
+  else if (bt?.dataset.o) { ui.onglet = bt.dataset.o; sauver(); rendre(); }
+  else if (bt?.id === "plus-tout") { ui.tout = !ui.tout; sauver(); rendre(); }
+  else if (bt && bt.parentElement.dataset.k) { const k = bt.parentElement.dataset.k; ui.tri = ui.tri.k === k ? {k, d: -ui.tri.d} : {k, d: ["nom", "ip", "mac", "reseau"].includes(k) ? 1 : -1}; sauver(); rendre(); }
+  else if (al) {
+    ev.preventDefault();
+    if (al.dataset.flt) { ui.filt = [al.dataset.flt]; sauver(); rendre(); }
+    $(al.dataset.cible).scrollIntoView({behavior: calme(), block: "start"});
+  }
 });
-
-// Préférences de l'interface, gardées dans le navigateur (jamais bloquant)
-const ui = {per: "5m"};
-try { Object.assign(ui, JSON.parse(localStorage.getItem("vigie") || "{}")); } catch (err) {}
-const sauver = () => { try { localStorage.setItem("vigie", JSON.stringify(ui)); } catch (err) {} };
+$("q").addEventListener("input", () => { ui.q = $("q").value; rendre(); });
+addEventListener("keydown", ev => {
+  if (ev.key === "/" && !ev.ctrlKey && !ev.metaKey && !ev.target.closest?.("input,textarea,select")) { ev.preventDefault(); $("q").focus(); }
+  else if (ev.key === "Escape") { if ($("fiche").open) $("fiche").close(); else if (ev.target === $("q")) { $("q").value = ui.q = ""; rendre(); } }
+});
 
 // Séries : 1 h à pas de 5 s lue au chargement puis prolongée par /api/etat ; 24 h et 30 j relues au plus toutes les 5 min
 const PER = {"5m": {N: 60, pas: 5}, "1h": {N: 720, pas: 5}, "24h": {N: 1440, pas: 60}, "30j": {N: 30, pas: 86400, barres: 1}};
@@ -399,8 +454,9 @@ function mini(id, v, bar) {
 const tuile = (id, val, sous) => { const t = $(id); t.querySelector("b").innerHTML = val; t.querySelector("p").textContent = sous; };
 const vitesse = v => v == null ? "" : v >= 1000 ? `${fr(v/1000)} Gb/s` : `${fr(v)} Mb/s`;
 const NIV = ["Critique", "Attention", "Info"];
+let err0 = null; // erreurs d'interface à l'ouverture de la page
 
-// Alertes à trois niveaux : [niveau, texte, cible]
+// Alertes à trois niveaux : [niveau, texte, cible, filtre du tableau]
 function alertes(e) {
   const s = e.systeme, sante = e.sante, w = e.interfaces[e.wan] || {}, al = [];
   const enPanne = sante.services.filter(x => x.etat !== "active");
@@ -410,13 +466,15 @@ function alertes(e) {
   if (net.length && net.every(x => x.ms == null)) al.push([0, "Internet ne répond pas au ping", "alertes-p"]);
   const m = e.dns.menaces;
   if (m.length) al.push([0, `${pl(new Set(m.map(x => x.ip)).size, "appareil a", "appareils ont")} contacté ${pl(new Set(m.map(x => x.domaine)).size, "domaine malveillant", "domaines malveillants")}`, "s-menaces"]);
-  for (const r of e.reseaux) if (r.plage && r.baux / r.plage.taille >= .9) al.push([1, `Plage DHCP ${esc(r.nom || r.cidr)} presque pleine`, "reseaux-p"]);
+  for (const r of e.reseaux) if (r.plage && r.baux / r.plage.taille >= .9) al.push([1, `Plage DHCP ${esc(r.nom || r.cidr)} presque pleine`, "appareils", "res:" + (r.nom || r.cidr)]);
   const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
   if (age != null && age > 48) al.push([1, `Listes de blocage vieilles de ${fr(age / 24)} j`, "alertes-p"]);
   if (s.memoire.totale && s.memoire.dispo / s.memoire.totale < .1) al.push([1, `Mémoire presque pleine (${o(s.memoire.dispo)} libres)`, "pied"]);
   if (s.temperature > 75) al.push([1, `Température élevée : ${fr(s.temperature)} °C`, "pied"]);
+  err0 ??= Object.fromEntries(Object.entries(e.interfaces).map(([i, x]) => [i, x.erreurs]));
+  for (const [i, x] of Object.entries(e.interfaces)) if (x.erreurs > (err0[i] ?? x.erreurs)) al.push([1, `Erreurs sur ${esc(i)} : +${fr(x.erreurs - err0[i])} depuis l'ouverture`, "reseaux-p"]);
   const nv = e.appareils.filter(x => x.nouveau).length;
-  if (nv) al.push([2, `${pl(nv, "nouvel appareil", "nouveaux appareils")} cette semaine`, "appareils"]);
+  if (nv) al.push([2, `${pl(nv, "nouvel appareil", "nouveaux appareils")} cette semaine`, "appareils", "nouv"]);
   return al.sort((a, c) => a[0] - c[0]);
 }
 
@@ -424,86 +482,113 @@ function alertes(e) {
 function lignes(e) {
   const macs = new Set(e.appareils.map(a => a.mac.toLowerCase()));
   const nomMac = Object.fromEntries(e.appareils.filter(x => x.nom).map(x => [x.mac.toLowerCase(), x.nom]));
-  const fixes = e.ip_fixes.filter(x => !macs.has(x.mac.toLowerCase())).map(x => ({...x, nom: x.nom || nomMac[x.mac], en_ligne: true, fixe: true}));
-  return [...e.appareils, ...fixes].sort((a, c) => (c.en_ligne - a.en_ligne) || (c.nouveau - a.nouveau) || ipn(a.ip) - ipn(c.ip));
+  return [...e.appareils, ...e.ip_fixes.filter(x => !macs.has(x.mac.toLowerCase())).map(x => ({...x, nom: x.nom || nomMac[x.mac], en_ligne: true, fixe: true}))];
 }
+const COL = {nom: x => (x.nom || "~").toLowerCase(), ip: x => ipn(x.ip), mac: x => x.mac || "", reseau: x => x.reseau || "", debit: x => x.debit || 0,
+  requetes: x => x.requetes || 0, bloques: x => x.bloques || 0, vu: x => x.en_ligne ? Infinity : x.vu || 0, premier: x => x.premier || 0};
+const FILT = {en: x => x.en_ligne, hors: x => !x.en_ligne, nouv: x => x.nouveau, fixe: x => x.fixe};
+const trier = ls => {
+  const {k, d} = ui.tri, f = COL[k];
+  return [...ls].sort(f ? (a, c) => (f(a) < f(c) ? -1 : f(a) > f(c) ? 1 : 0) * d || ipn(a.ip) - ipn(c.ip)
+    : (a, c) => (c.en_ligne - a.en_ligne) || (c.nouveau - a.nouveau) || ipn(a.ip) - ipn(c.ip));
+};
 const ligneTab = x => `<tr><td class="nom"><i class="pt ${x.en_ligne ? "ok" : ""}"></i><span class="sr">${x.en_ligne ? "en ligne" : "hors ligne"}</span>${x.ip ? qui({ip: x.ip, nom: x.nom || "Sans nom"}) : esc(x.nom || "Sans nom")}`
   + `${x.nouveau ? ' <span class="tag">nouveau</span>' : ""}${x.fixe ? ' <span class="tag">IP fixe</span>' : ""}</td>`
   + `<td class="ip mono">${esc(x.ip)}</td><td class="m mono">${esc(x.mac)}</td><td class="r">${esc(x.reseau)}</td>`
   + `<td class="num d">${x.debit > 0 ? b(x.debit) : "–"}</td><td class="num q">${nb(x.requetes)}</td><td class="num b">${nb(x.bloques)}</td>`
-  + `<td class="num">${x.en_ligne ? "en ligne" : date(x.vu)}</td><td class="num m">${date(x.premier)}</td></tr>`;
+  + `<td class="num vu">${x.en_ligne ? "en ligne" : date(x.vu)}</td><td class="num m">${date(x.premier)}</td></tr>`;
+
+// Tout ce qui se calcule depuis le dernier état : rappelé aussi quand l'utilisateur trie, filtre ou cherche
+function rendre() {
+  if (!E) return;
+  const e = E, s = e.systeme, w = e.interfaces[e.wan] || {}, sante = e.sante, d = e.dns, h = e.historique_wan, f = rech();
+  const al = alertes(e), grave = al.filter(a => a[0] < 2).length;
+  $("phare").className = "phare " + (al.some(a => a[0] === 0) ? "critique" : grave ? "attention" : "calme");
+  $("etat").textContent = grave ? `${pl(grave, "point", "points")} à regarder` : "Tout est calme";
+  $("n-alertes").textContent = al.length ? fr(al.length) : "";
+  poser("alertes", al.length ? al.map(([n, t, c, fl]) => `<li class="al n${n}"><span class="niv">${NIV[n]}</span><a href="#${c}" data-cible="${c}" data-flt="${esc(fl)}">${t}</a></li>`).join("") : `<li class="vide">Rien à signaler</li>`);
+
+  lignesApp = lignes(e);
+  const enLigne = lignesApp.filter(x => x.en_ligne).length;
+  const [rx, urx] = bp(w.rx), [tx, utx] = bp(w.tx), net = sante.latences.find(x => x.nom === "Internet"), pass = sante.latences.find(x => x.nom === "Passerelle");
+  const ms = x => x && x.ms != null ? fr(x.ms, x.ms < 10 ? 1 : 0) : "–";
+  const bloq = d.bloques_24h.pub + d.bloques_24h.menaces, nvx = e.appareils.filter(x => x.nouveau).length;
+  tuile("k-rx", `${rx}<small>${urx}</small>`, h ? `Aujourd'hui ${o(h.jour.rx)}` : "");
+  tuile("k-tx", `${tx}<small>${utx}</small>`, h ? `Aujourd'hui ${o(h.jour.tx)}` : "");
+  tuile("k-lat", `${ms(net)}<small>${net && net.ms != null ? "ms" : ""}</small>`, pass ? `Passerelle ${ms(pass)}${pass.ms != null ? " ms" : ""}` : "");
+  tuile("k-app", `${fr(enLigne)}<small>sur ${fr(lignesApp.length)}</small>`, nvx ? `+${fr(nvx)} ${nvx > 1 ? "nouveaux" : "nouveau"}` : "aucun nouveau");
+  tuile("k-dns", fr(d.requetes_24h), `${fr(d.technique.n)} techniques`);
+  tuile("k-blo", `${fr(d.requetes_24h ? bloq * 100 / d.requetes_24h : 0, 1)}<small>%</small>`, `${pl(d.bloques_24h.pub, "pub", "pubs")}, ${pl(d.bloques_24h.menaces, "menace", "menaces")}`);
+  mini("k-rx", h1.rx.slice(-60)); mini("k-tx", h1.tx.slice(-60)); mini("k-lat", lat); mini("k-dns", d.par_heure.requetes, 1);
+
+  $("cumul").textContent = h ? `Aujourd'hui ${o(h.jour.rx)} reçus et ${o(h.jour.tx)} envoyés. Ce mois-ci ${o(h.mois.rx)} reçus et ${o(h.mois.tx)} envoyés.` : "";
+  $("lien-wan").textContent = `${e.wan} ${w.etat === "up" ? "connecté" : "coupé"}${w.vitesse ? " à " + vitesse(w.vitesse) : ""}`;
+  const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
+  poser("sante", [
+    ...sante.latences.map(x => `<div class="indic"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${esc(x.nom)} <span>${x.ms == null ? "sans réponse" : ms(x) + " ms"}</span></div>`),
+    ...sante.services.map(x => `<div class="indic"><i class="pt ${x.etat === "active" ? "ok" : "ko"}"></i>${esc(x.nom)} <span>${x.etat === "active" ? "actif" : esc(x.etat)}</span></div>`),
+    age == null ? "" : `<div class="indic"><i class="pt ${age < 48 ? "ok" : "att"}"></i>Listes <span>il y a ${age < 1 ? "moins d'1 h" : age < 48 ? fr(age) + " h" : fr(age / 24) + " j"}</span></div>`,
+  ].join(""));
+
+  const rowMen = d.menaces.map(x => ({a: `<span class="menace">${dom(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes"), t: `${x.domaine} ${x.nom || ""} ${x.ip}`}));
+  const rowSans = e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu), t: `${x.nom || ""} ${x.ip} ${x.vers}`}));
+  $("s-menaces").hidden = !d.menaces.length; liste("menaces", rowMen);
+  $("s-sansdns").hidden = !e.sans_dns.length; liste("sansdns", rowSans);
+
+  // tableau des appareils : filtres, tri, 15 lignes puis « Afficher les n autres »
+  const st = ui.filt.filter(k => FILT[k]), rs = ui.filt.filter(k => k.startsWith("res:")).map(k => k.slice(4));
+  const vus = trier(lignesApp.filter(x => st.every(k => FILT[k](x)) && (!rs.length || rs.includes(x.reseau)) && (!f || [x.nom, x.ip, x.mac].join(" ").toLowerCase().includes(f))));
+  const pf = k => `<button data-f="${k}" aria-pressed="${ui.filt.includes(k)}">`;
+  poser("chips", [["en", "En ligne"], ["hors", "Hors ligne"], ["nouv", "Nouveaux"], ["fixe", "IP fixe"]].map(([k, t]) => `${pf(k)}${t}</button>`).join("")
+    + [...new Set(lignesApp.map(x => x.reseau).filter(Boolean))].sort().map(r => `${pf("res:" + r)}${esc(r)}</button>`).join(""));
+  $("n-appareils").textContent = `${fr(enLigne)} en ligne sur ${fr(lignesApp.length)}${vus.length < lignesApp.length ? ` · ${fr(vus.length)} affichés` : ""}`;
+  const aff = ui.tout ? vus : vus.slice(0, 15);
+  poser("tb", aff.map(ligneTab).join("") || `<tr><td class="doux">${lignesApp.length ? "Aucun résultat" : "Aucun appareil"}</td></tr>`);
+  poser("plus-app", vus.length > 15 ? `<button id="plus-tout" data-tt="1">${ui.tout ? "Réduire" : `Afficher les ${fr(vus.length - 15)} autres`}</button>` : "");
+  document.querySelectorAll("th[data-k]").forEach(th => th.setAttribute("aria-sort", th.dataset.k !== ui.tri.k ? "none" : ui.tri.d > 0 ? "ascending" : "descending"));
+
+  $("n-res").textContent = pl(e.reseaux.length, "réseau", "réseaux");
+  poser("reseaux", e.reseaux.map(r => {
+    const l = e.interfaces[r.interface] || {}, p = r.plage ? r.baux / r.plage.taille : 0;
+    return `<div class="res"><h4>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : "ko"}" title="${esc(l.etat || "inconnu")}"></i></h4>
+      <p class="mono">${esc(r.cidr)}${l.vitesse ? ` · ${vitesse(l.vitesse)}` : ""}</p>
+      <p>${fr(r.en_ligne)} en ligne · ${pl(r.baux, "bail", "baux")} · ${pl(r.ip_fixes, "IP fixe", "IP fixes")}</p>
+      ${r.plage ? `<div class="jauge${p >= .9 ? " pleine" : ""}" style="--f:${Math.min(p, 1).toFixed(3)}"><i></i></div><p>DHCP ${fr(Math.round(p * 100))} % occupé</p>` : "<p>Pas de plage DHCP</p>"}</div>`;
+  }).join(""));
+  poser("interfaces", Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.etat === "up" ? "ok" : x.etat === "down" ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(x.etat)}</span></td>`
+    + `<td class="num">${x.vitesse ? vitesse(x.vitesse) : x.etat === "down" ? "coupé" : ""}</td><td class="num">↓ ${b(x.rx)}</td><td class="num">↑ ${b(x.tx)}</td><td class="num doux">${x.erreurs ? pl(x.erreurs, "erreur", "erreurs") : ""}</td></tr>`).join(""));
+
+  $("total-dns").textContent = pl(d.requetes_24h, "requête", "requêtes");
+  const fq = part(d.clients, x => x.n);
+  liste("clients", d.clients.map(x => ({a: qui(x), v: fr(x.n), f: fq(x), t: `${x.nom || ""} ${x.ip}`})));
+  groupes("domaines", d.groupes, "Aucune requête");
+  $("n-attendu").textContent = pl(d.attendu.n, "requête", "requêtes");
+  liste("attendu", d.attendu.domaines.map(([x, n]) => ({a: dom(x), v: fr(n), t: x})), "Aucun");
+  $("technique").textContent = d.technique.n ? `Trafic technique (DNS inverse, mDNS, WPAD…) : ${pl(d.technique.n, "requête", "requêtes")}.` : "";
+  const fp = part(d.pub_bloquee, x => x.n);
+  const ONG = {
+    nouv: ["Nouveaux", d.nouveaux_groupes.length, d.nouveaux_groupes.map(g => ({a: dom(g.domaine), sous: pl(g.n, "nouveau domaine", "nouveaux domaines"), v: heure(g.dernier), t: g.domaine})), "Aucun"],
+    pub: ["Pubs", d.bloques_24h.pub, d.pub_bloquee.map(x => ({a: qui(x), v: pl(x.n, "pub", "pubs"), f: fp(x), t: `${x.nom || ""} ${x.ip}`})), "Aucune"],
+    men: ["Menaces", d.bloques_24h.menaces, rowMen, "Rien à signaler"], sdns: ["Sans DNS", e.sans_dns.length, rowSans, "Rien à signaler"],
+  };
+  if (!ONG[ui.onglet]) ui.onglet = "nouv";
+  poser("onglets", Object.entries(ONG).map(([k, [t, n]]) => `<button role="tab" data-o="${k}" aria-selected="${ui.onglet === k}">${t} ${fr(n)}</button>`).join(""));
+  liste("liste-onglet", ONG[ui.onglet][2], ONG[ui.onglet][3]);
+
+  $("sys").textContent = `Charge ${fr(s.charge[0], 2)} · mémoire libre ${o(s.memoire.dispo)} sur ${o(s.memoire.totale)}` + (s.temperature ? ` · ${fr(s.temperature)} °C` : "");
+  $("listes").textContent = `En marche depuis ${fr(s.uptime / 86400, 1)} j. Listes de blocage : ${nb(s.listes.menaces)} domaines malveillants, ${nb(s.listes.pub)} domaines de pub, ${nb(s.listes.ip)} IP.`;
+}
 
 let derniere = null, latT = 0;
 async function maj() {
   try {
-    const e = await (await fetch("api/etat")).json(), s = e.systeme, w = e.interfaces[e.wan] || {}, sante = e.sante, d = e.dns, h = e.historique_wan;
-
-    const al = alertes(e), grave = al.filter(a => a[0] < 2).length;
-    $("phare").className = "phare " + (al.some(a => a[0] === 0) ? "critique" : grave ? "attention" : "calme");
-    $("etat").textContent = grave ? `${pl(grave, "point", "points")} à regarder` : "Tout est calme";
-    $("n-alertes").textContent = al.length ? fr(al.length) : "";
-    $("alertes").innerHTML = al.length ? al.map(([n, t, c]) => `<li class="al n${n}"><span class="niv">${NIV[n]}</span><a href="#${c}">${t}</a></li>`).join("") : `<li class="vide">Rien à signaler</li>`;
-
-    const lignesApp = lignes(e), enLigne = e.appareils.filter(x => x.en_ligne).length + lignesApp.filter(x => x.fixe).length;
-    const [rx, urx] = bp(w.rx), [tx, utx] = bp(w.tx), net = sante.latences.find(x => x.nom === "Internet"), pass = sante.latences.find(x => x.nom === "Passerelle");
-    const ms = x => x && x.ms != null ? fr(x.ms, x.ms < 10 ? 1 : 0) : "–";
-    const bloq = d.bloques_24h.pub + d.bloques_24h.menaces, nvx = e.appareils.filter(x => x.nouveau).length;
-    tuile("k-rx", `${rx}<small>${urx}</small>`, h ? `Aujourd'hui ${o(h.jour.rx)}` : "");
-    tuile("k-tx", `${tx}<small>${utx}</small>`, h ? `Aujourd'hui ${o(h.jour.tx)}` : "");
-    tuile("k-lat", `${ms(net)}<small>${net && net.ms != null ? "ms" : ""}</small>`, pass ? `Passerelle ${ms(pass)}${pass.ms != null ? " ms" : ""}` : "");
-    tuile("k-app", `${fr(enLigne)}<small>sur ${fr(lignesApp.length)}</small>`, nvx ? `+${fr(nvx)} ${nvx > 1 ? "nouveaux" : "nouveau"}` : "aucun nouveau");
-    tuile("k-dns", fr(d.requetes_24h), `${fr(d.technique.n)} techniques`);
-    tuile("k-blo", `${fr(d.requetes_24h ? bloq * 100 / d.requetes_24h : 0, 1)}<small>%</small>`, `${pl(d.bloques_24h.pub, "pub", "pubs")}, ${pl(d.bloques_24h.menaces, "menace", "menaces")}`);
-
+    const e = await (await fetch("api/etat")).json(), w = e.interfaces[e.wan] || {}, net = e.sante.latences.find(x => x.nom === "Internet");
     h1.rx.push(w.rx || 0); h1.tx.push(w.tx || 0); h1.fin = e.maintenant;
     if (h1.rx.length > 720) { h1.rx.shift(); h1.tx.shift(); }
-    if (net && net.ms !== undefined && e.maintenant - latT >= 30) { lat.push(net.ms); latT = e.maintenant; if (lat.length > 120) lat.shift(); }
-    tracer();
-    mini("k-rx", h1.rx.slice(-60)); mini("k-tx", h1.tx.slice(-60)); mini("k-lat", lat); mini("k-dns", d.par_heure.requetes, 1);
+    if (net && e.maintenant - latT >= 30) { lat.push(net.ms); latT = e.maintenant; if (lat.length > 120) lat.shift(); }
+    E = e; rendre(); tracer();
     const l = longues[ui.per];
     if (PER[ui.per].pas > 5 && (!l || Date.now() - l.t > 3e5)) chargerLongue(ui.per);
-    $("cumul").textContent = h ? `Aujourd'hui ${o(h.jour.rx)} reçus et ${o(h.jour.tx)} envoyés. Ce mois-ci ${o(h.mois.rx)} reçus et ${o(h.mois.tx)} envoyés.` : "";
-    $("lien-wan").textContent = `${e.wan} ${w.etat === "up" ? "connecté" : "coupé"}${w.vitesse ? " à " + vitesse(w.vitesse) : ""}`;
-    const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
-    $("sante").innerHTML = [
-      ...sante.latences.map(x => `<div class="indic"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${esc(x.nom)} <span>${x.ms == null ? "sans réponse" : ms(x) + " ms"}</span></div>`),
-      ...sante.services.map(x => `<div class="indic"><i class="pt ${x.etat === "active" ? "ok" : "ko"}"></i>${esc(x.nom)} <span>${x.etat === "active" ? "actif" : esc(x.etat)}</span></div>`),
-      age == null ? "" : `<div class="indic"><i class="pt ${age < 48 ? "ok" : "att"}"></i>Listes <span>il y a ${age < 1 ? "moins d'1 h" : age < 48 ? fr(age) + " h" : fr(age / 24) + " j"}</span></div>`,
-    ].join("");
-
-    $("s-menaces").hidden = !d.menaces.length;
-    liste("menaces", d.menaces.map(x => ({a: `<span class="menace">${dom(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes")})));
-    $("s-sansdns").hidden = !e.sans_dns.length;
-    liste("sansdns", e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu)})));
-
-    $("n-appareils").textContent = `${fr(enLigne)} en ligne sur ${fr(lignesApp.length)}`;
-    $("tb").innerHTML = lignesApp.map(ligneTab).join("") || `<tr><td class="doux">Aucun appareil</td></tr>`;
-
-    $("n-res").textContent = pl(e.reseaux.length, "réseau", "réseaux");
-    $("reseaux").innerHTML = e.reseaux.map(r => {
-      const l = e.interfaces[r.interface] || {}, f = r.plage ? r.baux / r.plage.taille : 0;
-      return `<div class="res"><h4>${esc(r.nom || r.cidr)}<i class="pt ${l.etat === "up" ? "ok" : "ko"}" title="${esc(l.etat || "inconnu")}"></i></h4>
-        <p class="mono">${esc(r.cidr)}${l.vitesse ? ` · ${vitesse(l.vitesse)}` : ""}</p>
-        <p>${fr(r.en_ligne)} en ligne · ${pl(r.baux, "bail", "baux")} · ${pl(r.ip_fixes, "IP fixe", "IP fixes")}</p>
-        ${r.plage ? `<div class="jauge${f >= .9 ? " pleine" : ""}" style="--f:${Math.min(f, 1).toFixed(3)}"><i></i></div><p>DHCP ${fr(Math.round(f * 100))} % occupé</p>` : "<p>Pas de plage DHCP</p>"}</div>`;
-    }).join("");
-    $("interfaces").innerHTML = Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.etat === "up" ? "ok" : x.etat === "down" ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(x.etat)}</span></td>`
-      + `<td class="num">${x.vitesse ? vitesse(x.vitesse) : x.etat === "down" ? "coupé" : ""}</td><td class="num">↓ ${b(x.rx)}</td><td class="num">↑ ${b(x.tx)}</td><td class="num doux">${x.erreurs ? pl(x.erreurs, "erreur", "erreurs") : ""}</td></tr>`).join("");
-
-    $("total-dns").textContent = pl(d.requetes_24h, "requête", "requêtes");
-    const fq = part(d.clients, x => x.n);
-    liste("clients", d.clients.map(x => ({a: qui(x), v: fr(x.n), f: fq(x)})));
-    groupes("domaines", d.groupes, "Aucune requête");
-    $("n-attendu").textContent = pl(d.attendu.n, "requête", "requêtes");
-    liste("attendu", d.attendu.domaines.map(([x, n]) => ({a: dom(x), v: fr(n)})), "Aucun");
-    $("technique").textContent = d.technique.n ? `Trafic technique (DNS inverse, mDNS, WPAD…) : ${pl(d.technique.n, "requête", "requêtes")}.` : "";
-    liste("nouveaux", d.nouveaux_groupes.map(g => ({a: dom(g.domaine), sous: pl(g.n, "nouveau domaine", "nouveaux domaines"), v: heure(g.dernier)})), "Aucun");
-    const fp = part(d.pub_bloquee, x => x.n);
-    liste("pub", d.pub_bloquee.map(x => ({a: qui(x), v: pl(x.n, "pub", "pubs"), f: fp(x)})), "Aucune");
-
-    $("sys").textContent = `Charge ${fr(s.charge[0], 2)} · mémoire libre ${o(s.memoire.dispo)} sur ${o(s.memoire.totale)}` + (s.temperature ? ` · ${fr(s.temperature)} °C` : "");
-    $("listes").textContent = `En marche depuis ${fr(s.uptime / 86400, 1)} j. Listes de blocage : ${nb(s.listes.menaces)} domaines malveillants, ${nb(s.listes.pub)} domaines de pub, ${nb(s.listes.ip)} IP.`;
-
     derniere = e.maintenant;
     document.body.classList.remove("perime");
     $("maj").textContent = `À jour à ${heure(derniere)}`;
@@ -514,7 +599,14 @@ async function maj() {
     $("maj").textContent = derniere ? `Chiffres de ${heure(derniere)}` : "";
   }
 }
-charger1h().then(() => { maj(); setInterval(maj, 5000); });
+// Onglet caché : aucune requête ; au retour, l'historique est relu puis le rythme reprend
+let tourne = false;
+function demarrer() {
+  tourne = true;
+  charger1h().then(() => { maj(); setInterval(() => document.hidden || maj(), 5000); });
+}
+document.addEventListener("visibilitychange", () => { if (document.hidden) return; if (tourne) charger1h().then(maj); else demarrer(); });
+if (!document.hidden) demarrer();
 </script>
 </body>
 </html>
