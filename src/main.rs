@@ -7,14 +7,15 @@
 //! - dnsmasq DHCP leases: devices, and an alert on new ones
 //!
 //! The DNS log is only kept as 24 h aggregates, in memory.
-//! shortcut: IPv4 only (like the formats read), to extend if the router serves IPv6.
+//! IPv6: flows and queries are attributed to the device of the same MAC (neighbour table -> MAC -> IPv4 lease/ARP),
+//! an address with no known MAC is shown as is.
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fs::{self, File};
 use std::hash::Hash;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
-use std::net::{Ipv4Addr, TcpListener, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::{LazyLock, Mutex, MutexGuard, OnceLock};
@@ -34,6 +35,7 @@ struct Config {
     leases: String,
     page: Option<String>,
     local_nets: Vec<(u32, u32)>,   // (network, mask)
+    local_nets6: Vec<(u128, u128)>, // same, IPv6
     dhcp: Vec<(String, u32, u32)>, // (name, start, end)
     probes: Vec<String>,
     services: Vec<String>,
@@ -48,6 +50,10 @@ fn env(name: &str, default: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| default.into())
 }
 
+fn nets() -> Vec<String> {
+    env("VIGIE_NETWORKS", "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fe80::/10 fc00::/7").split_whitespace().map(String::from).collect()
+}
+
 fn cfg() -> &'static Config {
     static CFG: OnceLock<Config> = OnceLock::new();
     CFG.get_or_init(|| Config {
@@ -58,9 +64,11 @@ fn cfg() -> &'static Config {
         dns_log: env("VIGIE_DNS_LOG", "/run/dnsmasq/requetes.log"),
         leases: env("VIGIE_LEASES", "/var/lib/dnsmasq/dnsmasq.leases"),
         page: std::env::var("VIGIE_PAGE").ok(),
-        local_nets: env("VIGIE_NETWORKS", "10.0.0.0/8 172.16.0.0/12 192.168.0.0/16")
-            .split_whitespace()
+        local_nets: nets().iter().filter(|n| !n.contains(':'))
             .map(|n| cidr(n).unwrap_or_else(|| panic!("invalid VIGIE_NETWORKS entry: {n}")))
+            .collect(),
+        local_nets6: nets().iter().filter(|n| n.contains(':'))
+            .map(|n| cidr6(n).unwrap_or_else(|| panic!("invalid VIGIE_NETWORKS entry: {n}")))
             .collect(),
         dhcp: env("VIGIE_DHCP", "").split_whitespace().map(|p| parse_range(p).unwrap_or_else(|| panic!("invalid VIGIE_DHCP entry: {p}"))).collect(),
         probes: env("VIGIE_PROBES", "1.1.1.1").split_whitespace().map(String::from).collect(),
@@ -74,8 +82,8 @@ fn cfg() -> &'static Config {
 fn parse_names(s: &str) -> HashMap<String, String> {
     s.split_whitespace()
         .filter_map(|p| p.split_once('='))
-        .filter(|(ip, name)| ip.parse::<Ipv4Addr>().is_ok() && !name.is_empty())
-        .map(|(ip, name)| (ip.into(), name.into()))
+        .filter(|(_, name)| !name.is_empty())
+        .filter_map(|(ip, name)| Some((ip.parse::<IpAddr>().ok()?.to_string(), name.into())))
         .collect()
 }
 
@@ -113,12 +121,12 @@ fn is_new(first_seen: f64, oldest: f64, t: f64) -> bool {
 }
 
 /// Address of the router itself (loopback or one of its interfaces).
-fn is_router(ip: &str, own: &[(String, u32, u32, String)]) -> bool {
-    ip.parse::<Ipv4Addr>().is_ok_and(|a| a.is_loopback()) || own.iter().any(|p| p.3 == ip)
+fn is_router(ip: &str, own: &[(String, u32, u32, String)], own6: &[(String, u128, u128, String)]) -> bool {
+    ip.parse::<IpAddr>().is_ok_and(|a| a.is_loopback()) || own.iter().any(|p| p.3 == ip) || own6.iter().any(|p| p.3 == ip)
 }
 
 /// Above `max` entries, drops the oldest half.
-fn cap_map(m: &mut HashMap<String, f64>, max: usize) {
+fn cap_map<K>(m: &mut HashMap<K, f64>, max: usize) {
     if m.len() > max {
         let mut ts: Vec<f64> = m.values().copied().collect();
         let mid = ts.len() / 2;
@@ -161,6 +169,10 @@ struct State {
     services: Vec<(String, String)>,                         // (unit, is-active)
     vnstat: Option<Vnstat>,                                  // cache refreshed every minute
     addresses: Vec<(String, u32, u32, String)>,              // `ip addr` cache: (interface, network, mask, address)
+    addresses6: Vec<(String, u128, u128, String)>,           // same, global IPv6 addresses
+    v6_prefix: Option<String>,                               // delegated prefix (unreachable route), if visible
+    v6_mac: HashMap<String, String>,                         // IPv6 neighbour -> MAC, <= MAX_V6 entries
+    mac_ip: HashMap<String, String>,                         // MAC -> IPv4 (DHCP leases, else ARP)
     ring_5s: VecDeque<(f32, f32)>,                           // WAN rate (rx, tx) every 5 s, <= 720 points (1 h)
     ring_min: VecDeque<(f32, f32)>,                          // per-minute average, <= 1440 points (24 h)
     lat_hist: Vec<(String, String, VecDeque<Option<f32>>)>,  // (name, target, ms) every 30 s, <= 8 probes x 120 points (1 h)
@@ -170,6 +182,7 @@ const PTS_5S: usize = 720;
 const PTS_MIN: usize = 1440;
 const PTS_LAT: usize = 120;
 const MAX_PROBES: usize = 8;
+const MAX_V6: usize = 8192;
 
 fn push_capped<T>(q: &mut VecDeque<T>, v: T, max: usize) {
     q.push_back(v);
@@ -214,6 +227,35 @@ fn cidr(s: &str) -> Option<(u32, u32)> {
     Some((u32::from(a.parse::<Ipv4Addr>().ok()?) & mask, mask))
 }
 
+fn cidr6(s: &str) -> Option<(u128, u128)> {
+    let (a, p) = s.split_once('/')?;
+    let p: u32 = p.parse().ok().filter(|&p| p <= 128)?;
+    let mask = if p == 0 { 0 } else { !0u128 << (128 - p) };
+    Some((u128::from(a.parse::<Ipv6Addr>().ok()?) & mask, mask))
+}
+
+/// Normalised text form (IPv6 is compressed differently by dnsmasq, conntrack and `ip`).
+fn norm(s: &str) -> String {
+    if s.contains(':') { s.parse::<Ipv6Addr>().map_or_else(|_| s.into(), |a| a.to_string()) } else { s.into() }
+}
+
+/// Link-local and multicast IPv6: not counted in the traffic stats.
+fn v6_ignored(ip: &str) -> bool {
+    ip.parse::<Ipv6Addr>().is_ok_and(|a| a.is_multicast() || a.segments()[0] & 0xffc0 == 0xfe80)
+}
+
+/// Local IPv4 or IPv6: configured blocks, plus the IPv6 prefixes of the LAN interfaces (`lan6`).
+fn is_local_ip(ip: &str, lan6: &[(u128, u128)]) -> bool {
+    match ip.parse::<IpAddr>() {
+        Ok(IpAddr::V4(_)) => is_local(ip),
+        Ok(IpAddr::V6(a)) => {
+            let a = u128::from(a);
+            cfg().local_nets6.iter().chain(lan6).any(|&(n, m)| a & m == n)
+        }
+        Err(_) => false,
+    }
+}
+
 fn is_local(ip: &str) -> bool {
     let Ok(a) = ip.parse::<Ipv4Addr>() else { return false };
     let a = u32::from(a);
@@ -228,6 +270,11 @@ fn is_public(ip: &str) -> bool {
         ([192, 0, 2, 0], 24), ([192, 168, 0, 0], 16), ([198, 18, 0, 0], 15), ([198, 51, 100, 0], 24),
         ([203, 0, 113, 0], 24), ([240, 0, 0, 0], 4), ([255, 255, 255, 255], 32),
     ];
+    if let Ok(a) = ip.parse::<Ipv6Addr>() {
+        // global unicast 2000::/3, minus the documentation prefix 2001:db8::/32
+        let x = u128::from(a);
+        return x >> 125 == 1 && x >> 96 != 0x2001_0db8;
+    }
     let Ok(a) = ip.parse::<Ipv4Addr>() else { return false };
     let a = u32::from(a);
     !NON_GLOBAL.iter().any(|&(r, p)| {
@@ -286,11 +333,20 @@ fn digits(s: &str) -> bool {
     !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit())
 }
 
-fn ipv4_chars(s: &str) -> bool {
-    !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit() || c == b'.')
+fn is_ip(s: &str) -> bool {
+    s.parse::<IpAddr>().is_ok()
 }
 
-/// Lines like `... ]: 123 192.168.1.5/5432 query[A] example.org from 192.168.1.5`.
+/// The device of an address: an IPv6 address becomes the IPv4 of the same MAC when known, else stays itself.
+fn device_key(e: &State, ip: &str) -> String {
+    if !ip.contains(':') {
+        return ip.into();
+    }
+    let n = norm(ip);
+    e.v6_mac.get(&n).and_then(|m| e.mac_ip.get(m)).cloned().unwrap_or(n)
+}
+
+/// Lines like `... ]: 123 192.168.1.5/5432 query[A] example.org from 192.168.1.5` (the client may be IPv6, the reply AAAA).
 fn parse_dns_log(l: &str) -> Option<Event<'_>> {
     let rest = &l[l.find("]: ")? + 3..];
     let t: Vec<&str> = rest.split_whitespace().collect();
@@ -298,7 +354,7 @@ fn parse_dns_log(l: &str) -> Option<Event<'_>> {
         return None;
     }
     let (client, port) = t[1].split_once('/')?;
-    if !ipv4_chars(client) || !digits(port) {
+    if !is_ip(client) || !digits(port) {
         return None;
     }
     let kind = t[2];
@@ -315,7 +371,7 @@ fn parse_dns_log(l: &str) -> Option<Event<'_>> {
             }
         }
     }
-    if (kind == "reply" || kind == "cached") && t[4] == "is" && t.len() == 6 && ipv4_chars(t[5]) {
+    if (kind == "reply" || kind == "cached") && t[4] == "is" && t.len() == 6 && is_ip(t[5]) {
         return Some(Event::Reply { domain: t[3], ip: t[5] });
     }
     None
@@ -344,7 +400,8 @@ fn read_dns_log(mut position: u64) -> u64 {
         for l in text.lines() {
             match parse_dns_log(l.trim_end()) {
                 Some(Event::Query { client, domain }) => {
-                    e.queries.push_back((t, client.into(), domain.into()));
+                    let c = device_key(e, client);
+                    e.queries.push_back((t, c, domain.into()));
                     if e.queries.len() > 150_000 {
                         e.queries.pop_front();
                     }
@@ -353,13 +410,14 @@ fn read_dns_log(mut position: u64) -> u64 {
                     }
                 }
                 Some(Event::Blocked { client, list, domain }) => {
-                    e.blocked.push_back((t, client.into(), domain.into(), list));
+                    let c = device_key(e, client);
+                    e.blocked.push_back((t, c, domain.into(), list));
                     if e.blocked.len() > 20_000 {
                         e.blocked.pop_front();
                     }
                 }
                 Some(Event::Reply { domain, ip }) => {
-                    e.ip_to_name.insert(ip.into(), domain.into());
+                    e.ip_to_name.insert(norm(ip), domain.into());
                 }
                 None => {}
             }
@@ -402,7 +460,7 @@ fn interface_bytes() -> HashMap<String, (u64, u64)> {
 fn parse_conntrack(l: &str) -> Option<(&str, &str, u64, u64)> {
     let t: Vec<&str> = l.split_whitespace().collect();
     let pair = |from: usize| (from..t.len().saturating_sub(1)).find(|&i| {
-        t[i].strip_prefix("src=").is_some_and(ipv4_chars) && t[i + 1].strip_prefix("dst=").is_some_and(ipv4_chars)
+        t[i].strip_prefix("src=").is_some_and(is_ip) && t[i + 1].strip_prefix("dst=").is_some_and(is_ip)
     });
     let bytes = |from: usize| {
         (from..t.len()).find_map(|j| t[j].strip_prefix("bytes=").map(|v| (j, v.parse::<u64>().ok())))
@@ -414,18 +472,18 @@ fn parse_conntrack(l: &str) -> Option<(&str, &str, u64, u64)> {
     Some((&t[i][4..], &t[i + 1][4..], b1?, b2?))
 }
 
-/// Bytes per local device (sum of live connections) + connections to public IPs.
-fn conntrack_bytes() -> (HashMap<String, u64>, Vec<(String, String)>) {
+/// Bytes per local source address (sum of live connections, IPv4 and IPv6) + connections to public IPs.
+fn conntrack_bytes(lan6: &[(u128, u128)]) -> (HashMap<String, u64>, Vec<(String, String)>) {
     let (mut per_ip, mut targets) = (HashMap::new(), Vec::new());
     let Ok(f) = File::open("/proc/net/nf_conntrack") else { return (per_ip, targets) };
     let mut f = BufReader::new(f);
     let mut line = Vec::new();
     while f.read_until(b'\n', &mut line).is_ok_and(|n| n > 0) {
         if let Some((src, dst, b1, b2)) = parse_conntrack(&String::from_utf8_lossy(&line)) {
-            if is_local(src) {
-                *per_ip.entry(src.to_string()).or_insert(0) += b1 + b2;
-                if is_public(dst) {
-                    targets.push((src.into(), dst.into()));
+            if is_local_ip(src, lan6) && !v6_ignored(src) && !v6_ignored(dst) {
+                *per_ip.entry(norm(src)).or_insert(0) += b1 + b2;
+                if is_public(dst) && !is_local_ip(dst, lan6) {
+                    targets.push((norm(src), norm(dst)));
                 }
             }
         }
@@ -444,14 +502,20 @@ fn sampler() {
     let mut step = 0u32;
     loop {
         thread::sleep(Duration::from_secs(5));
+        refresh_neighbours();
         position = read_dns_log(position);
         let t = now();
         let dt = (t - prev_t).max(0.001);
         let cur_if = interface_bytes();
-        let (ct, targets) = conntrack_bytes();
+        let lan6: Vec<_> = lan_prefixes6(&lock().addresses6, &cfg().wan).iter().map(|a| (a.1, a.2)).collect();
+        let (ct_raw, targets) = conntrack_bytes(&lan6);
+        let mut ct: HashMap<String, u64> = HashMap::new();
         {
             let mut guard = lock();
             let e = &mut *guard;
+            for (ip, b) in ct_raw {
+                *ct.entry(device_key(e, &ip)).or_insert(0) += b;
+            }
             e.if_rates.clear();
             for (i, &(rx, tx)) in &cur_if {
                 if let Some(&(prx, ptx)) = prev_if.get(i) {
@@ -474,10 +538,12 @@ fn sampler() {
             }
             for (src, dst) in targets {
                 if !e.ip_to_name.contains_key(&dst) {
+                    let src = device_key(e, &src);
                     e.no_dns.insert((src, dst), t);
                 }
             }
             e.no_dns.retain(|_, &mut v| t - v <= WINDOW);
+            cap_map(&mut e.no_dns, 20_000);
             let limit = t - WINDOW;
             while e.queries.front().is_some_and(|r| r.0 < limit) {
                 e.queries.pop_front();
@@ -543,21 +609,76 @@ fn current_leases() -> Vec<(String, String)> {
     }).collect()
 }
 
-/// `ip -j -4 addr` -> (interface, network, mask, address).
-fn interface_addresses() -> Vec<(String, u32, u32, String)> {
-    let Ok(out) = Command::new("ip").args(["-j", "-4", "addr", "show"]).stderr(Stdio::null()).output() else { return vec![] };
-    let v: Value = serde_json::from_slice(&out.stdout).unwrap_or(Value::Null);
+/// `ip -j addr` output -> (interface, address, prefix length, scope).
+fn parse_addr_json(raw: &[u8]) -> Vec<(String, String, u64, String)> {
+    let v: Value = serde_json::from_slice(raw).unwrap_or(Value::Null);
     let mut r = vec![];
     for i in v.as_array().into_iter().flatten() {
         for a in i["addr_info"].as_array().into_iter().flatten() {
             if let (Some(name), Some(ip), Some(p)) = (i["ifname"].as_str(), a["local"].as_str(), a["prefixlen"].as_u64()) {
-                if let Some((net, m)) = cidr(&format!("{ip}/{p}")) {
-                    r.push((name.into(), net, m, ip.into()));
-                }
+                r.push((name.into(), ip.into(), p, a["scope"].as_str().unwrap_or("").into()));
             }
         }
     }
     r
+}
+
+fn ip_addr(family: &str) -> Vec<(String, String, u64, String)> {
+    Command::new("ip").args(["-j", family, "addr", "show"]).stderr(Stdio::null()).output().map(|o| parse_addr_json(&o.stdout)).unwrap_or_default()
+}
+
+/// `ip -j -4 addr` -> (interface, network, mask, address).
+fn interface_addresses() -> Vec<(String, u32, u32, String)> {
+    ip_addr("-4").into_iter().filter_map(|(name, ip, p, _)| cidr(&format!("{ip}/{p}")).map(|(net, m)| (name, net, m, ip))).collect()
+}
+
+/// `ip -j -6 addr`: global addresses -> (interface, network, mask, address).
+fn interface_addresses6() -> Vec<(String, u128, u128, String)> {
+    ip_addr("-6").into_iter().filter(|a| a.3 == "global")
+        .filter_map(|(name, ip, p, _)| cidr6(&format!("{ip}/{p}")).map(|(net, m)| (name, net, m, norm(&ip)))).collect()
+}
+
+/// Prefixes of the non-WAN interfaces (one entry per interface and prefix): local by definition, and shown as networks.
+/// The delegated prefix changes, so this is read from the interfaces rather than configured.
+fn lan_prefixes6(addrs: &[(String, u128, u128, String)], wan: &str) -> Vec<(String, u128, u128, String)> {
+    let mut v: Vec<(String, u128, u128, String)> = vec![];
+    for a in addrs.iter().filter(|a| a.0 != wan && a.2.count_ones() <= 126) {
+        if !v.iter().any(|b| (&b.0, b.1, b.2) == (&a.0, a.1, a.2)) {
+            v.push(a.clone());
+        }
+    }
+    v.sort_unstable();
+    v
+}
+
+/// `ip -6 neigh` -> (address, MAC) of the entries that have a MAC (FAILED/INCOMPLETE ones do not).
+fn parse_neigh(text: &str) -> Vec<(String, String)> {
+    text.lines().filter_map(|l| {
+        let t: Vec<&str> = l.split_whitespace().collect();
+        let mac = t.iter().position(|&w| w == "lladdr").and_then(|i| t.get(i + 1))?;
+        t.first()?.parse::<Ipv6Addr>().ok().map(|a| (a.to_string(), mac.to_lowercase()))
+    }).collect()
+}
+
+/// `ip -6 route show type unreachable`: the delegated prefix (a global /48 to /63), when the DHCPv6 client installs it.
+fn parse_prefix(text: &str) -> Option<String> {
+    text.split_whitespace().find(|w| {
+        w.split_once('/').and_then(|(a, p)| Some((a.parse::<Ipv6Addr>().ok()?, p.parse::<u8>().ok()?)))
+            .is_some_and(|(a, p)| (48..=63).contains(&p) && is_public(&a.to_string()))
+    }).map(String::from)
+}
+
+/// Every cycle: IPv6 neighbour -> MAC cache, and MAC -> IPv4 (leases, else ARP). Costs one `ip` call.
+fn refresh_neighbours() {
+    let out = Command::new("ip").args(["-6", "neigh", "show"]).stderr(Stdio::null()).output().map(|o| String::from_utf8_lossy(&o.stdout).into_owned()).unwrap_or_default();
+    let mut mac_ip: HashMap<String, String> = parse_arp(&fs::read_to_string("/proc/net/arp").unwrap_or_default()).into_iter().map(|a| (a.1, a.0)).collect();
+    mac_ip.extend(current_leases());
+    let mut e = lock();
+    if e.v6_mac.len() > MAX_V6 {
+        e.v6_mac.clear();
+    }
+    e.v6_mac.extend(parse_neigh(&out));
+    e.mac_ip = mac_ip;
 }
 
 /// Networks to show: the interface subnets (except WAN) whose address is in a local block.
@@ -601,6 +722,9 @@ fn probes() {
             .map(|(i, s)| (s.clone(), states.get(i).cloned().unwrap_or_else(|| "unknown".into())))
             .collect();
         let addresses = interface_addresses();
+        let addresses6 = interface_addresses6();
+        let v6_prefix = Command::new("ip").args(["-6", "route", "show", "type", "unreachable"]).stderr(Stdio::null()).output()
+            .ok().and_then(|o| parse_prefix(&String::from_utf8_lossy(&o.stdout)));
         {
             let mut e = lock();
             for (n, c, ms) in &latencies {
@@ -616,6 +740,8 @@ fn probes() {
             e.latencies = latencies;
             e.services = services;
             e.addresses = addresses;
+            e.addresses6 = addresses6;
+            e.v6_prefix = v6_prefix;
         }
         thread::sleep(Duration::from_secs(30));
     }
@@ -811,7 +937,7 @@ fn device_card(ip: &str) -> Value {
 fn name_of(e: &State, ip: &str) -> Option<String> {
     e.devices.values().find(|a| a.ip.as_deref() == Some(ip)).and_then(|a| a.name.clone())
         .or_else(|| cfg().names.get(ip).cloned())
-        .or_else(|| is_router(ip, &e.addresses).then(|| "router".into()))
+        .or_else(|| is_router(ip, &e.addresses, &e.addresses6).then(|| "router".into()))
 }
 
 /// Domain name acceptable for /api/domain: 1 to 253 characters of [a-z0-9._-].
@@ -884,9 +1010,9 @@ fn status() -> Value {
     let system = system();
     let arp: Vec<_> = parse_arp(&fs::read_to_string("/proc/net/arp").unwrap_or_default())
         .into_iter().filter(|v| is_local(&v.0)).collect();
-    let (leases, addresses, wan_totals) = {
+    let (leases, addresses, addresses6, v6_prefix, wan_totals) = {
         let e = lock();
-        (current_leases(), e.addresses.clone(), e.vnstat.as_ref().map(|v| json!({"day": {"rx": v.day.0, "tx": v.day.1}, "month": {"rx": v.month.0, "tx": v.month.1}})))
+        (current_leases(), e.addresses.clone(), e.addresses6.clone(), e.v6_prefix.clone(), e.vnstat.as_ref().map(|v| json!({"day": {"rx": v.day.0, "tx": v.day.1}, "month": {"rx": v.month.0, "tx": v.month.1}})))
     };
     let online = |mac: &str| arp.iter().any(|v| v.1 == mac);
     let static_ips: Vec<_> = arp.iter().filter(|v| !leases.iter().any(|b| b.0 == v.1)).collect();
@@ -907,6 +1033,11 @@ fn status() -> Value {
         })
     }).collect();
     // network (the most specific) of an IP, by its name or else its CIDR
+    let networks6: Vec<Value> = lan_prefixes6(&addresses6, &cfg().wan).iter().map(|a| json!({
+        "cidr": format!("{}/{}", Ipv6Addr::from(a.1), a.2.count_ones()), "family": 6, "name": a.0, "interface": a.0, "address": a.3,
+        "range": null, "leases": 0, "online": 0, "static_ips": 0,
+    })).collect();
+    let ipv6 = json!({"prefix": v6_prefix, "wan": addresses6.iter().filter(|a| a.0 == cfg().wan).map(|a| &a.3).take(3).collect::<Vec<_>>()});
     let labels: Vec<(u32, u32, &str)> = shown.iter().zip(&networks)
         .map(|(&(n, m), v)| (n, m, v["name"].as_str().or(v["cidr"].as_str()).unwrap_or(""))).collect();
     let network_of = |ip: &str| labels.iter().filter(|x| within(ip, x.0, x.1)).max_by_key(|x| x.1.count_ones()).map(|x| x.2);
@@ -917,7 +1048,7 @@ fn status() -> Value {
     let names: HashMap<&str, Option<&str>> =
         e.devices.values().filter_map(|a| Some((a.ip.as_deref()?, a.name.as_deref()))).collect();
     let name = |ip: &str| names.get(ip).copied().flatten().or_else(|| cfg().names.get(ip).map(String::as_str))
-        .or_else(|| is_router(ip, &addresses).then_some("router"));
+        .or_else(|| is_router(ip, &addresses, &addresses6).then_some("router"));
     let oldest = e.devices.values().map(|a| a.first_seen).fold(f64::INFINITY, f64::min);
 
     // one pass over the queries, one over the blocks
@@ -988,7 +1119,8 @@ fn status() -> Value {
                 "rate": rate(a.ip.as_deref()), "queries": q, "blocked": b, "network": a.ip.as_deref().and_then(network_of),
             })
         }).collect::<Vec<_>>(),
-        "networks": networks,
+        "networks": networks.iter().chain(&networks6).collect::<Vec<_>>(),
+        "ipv6": ipv6,
         "static_ips": static_ips.iter().map(|(ip, mac, dev)| {
             let (q, b) = counts(Some(ip));
             json!({"ip": ip, "mac": mac, "interface": dev, "name": cfg().names.get(ip.as_str()),
@@ -1062,8 +1194,8 @@ fn serve(mut s: TcpStream) {
             }
         }
         (Some("GET"), Some(path)) if path.starts_with("/api/device?") => {
-            match param(path, "ip").filter(|ip| ip.parse::<Ipv4Addr>().is_ok()) {
-                Some(ip) => respond(&mut s, "200 OK", "application/json", device_card(ip).to_string().as_bytes()),
+            match param(path, "ip").map(|ip| ip.replace("%3A", ":").replace("%3a", ":")).filter(|ip| ip.parse::<IpAddr>().is_ok()) {
+                Some(ip) => respond(&mut s, "200 OK", "application/json", device_card(&norm(&ip)).to_string().as_bytes()),
                 None => respond(&mut s, "400 Bad Request", "text/plain", b"invalid ip"),
             }
         }
@@ -1120,6 +1252,52 @@ mod tests {
                  src=93.184.216.34 dst=192.168.0.2 sport=443 dport=5000 packets=9 bytes=3400 [ASSURED] mark=0 use=1";
         assert_eq!(parse_conntrack(l), Some(("192.168.1.5", "93.184.216.34", 1200, 3400)));
         assert_eq!(parse_conntrack("ipv4 2 udp 17 src=1.1.1.1 dst=2.2.2.2 sport=1 dport=2"), None);
+    }
+
+    #[test]
+    fn ipv6() {
+        let pre = "Nov 22 10:00:00 dnsmasq[1]: 12 2001:db8:0:1::5/5432 ";
+        let q = format!("{pre}query[AAAA] example.org from 2001:db8:0:1::5");
+        assert!(matches!(parse_dns_log(&q), Some(Event::Query { client: "2001:db8:0:1::5", domain: "example.org" })));
+        let r = format!("{pre}reply example.org is 2606:4700::1111");
+        assert!(matches!(parse_dns_log(&r), Some(Event::Reply { ip: "2606:4700::1111", .. })));
+        assert!(parse_dns_log(&format!("{pre}cached example.org is NODATA-IPv6")).is_none());
+        let b = format!("{pre}/var/lib/lists/ads.hosts ad.example is ::");
+        assert!(matches!(parse_dns_log(&b), Some(Event::Blocked { list: "ads", .. })));
+        let l = "ipv6 10 tcp 6 300 ESTABLISHED src=2001:db8:0:1::5 dst=2606:4700::1111 sport=5000 dport=443 packets=10 bytes=1200 \
+                 src=2606:4700::1111 dst=2001:db8:0:1::5 sport=443 dport=5000 packets=9 bytes=3400 [ASSURED] mark=0 use=1";
+        assert_eq!(parse_conntrack(l), Some(("2001:db8:0:1::5", "2606:4700::1111", 1200, 3400)));
+        assert!(is_public("2606:4700::1111") && !is_public("2001:db8::1") && !is_public("fe80::1") && !is_public("fd00::1") && !is_public("ff02::1"));
+        assert!(v6_ignored("fe80::1") && v6_ignored("ff02::fb") && !v6_ignored("2001:db8::1") && !v6_ignored("192.0.2.1"));
+        assert!(is_local_ip("fe80::1", &[]) && is_local_ip("fd12::1", &[]) && !is_local_ip("2001:db8:0:1::5", &[]));
+        let lan = [cidr6("2001:db8:0:1::/64").unwrap()];
+        assert!(is_local_ip("2001:db8:0:1::5", &lan) && !is_local_ip("2001:db8:0:2::5", &lan));
+        assert_eq!(norm("2001:0db8:0:0:0:0:0:5"), "2001:db8::5");
+    }
+
+    #[test]
+    fn neighbours() {
+        let n = "2001:db8:0:1::5 dev br0 lladdr AA:BB:CC:00:11:22 REACHABLE\n\
+                 fe80::1 dev br0 lladdr aa:bb:cc:00:11:22 router STALE\n\
+                 2001:db8:0:1::9 dev br0  FAILED\n";
+        assert_eq!(parse_neigh(n), vec![("2001:db8:0:1::5".into(), "aa:bb:cc:00:11:22".into()), ("fe80::1".into(), "aa:bb:cc:00:11:22".into())]);
+        let mut e = State::default();
+        e.v6_mac.insert("2001:db8:0:1::5".into(), "aa:bb:cc:00:11:22".into());
+        e.mac_ip.insert("aa:bb:cc:00:11:22".into(), "192.0.2.10".into());
+        assert_eq!(device_key(&e, "2001:DB8:0:1::5"), "192.0.2.10");
+        assert_eq!(device_key(&e, "2001:db8:0:1::6"), "2001:db8:0:1::6");
+        assert_eq!(device_key(&e, "192.0.2.77"), "192.0.2.77");
+        assert_eq!(parse_prefix("unreachable 2001:db8:abcd::/56 dev lo proto static metric 1024 pref medium"), None, "documentation prefix is not global");
+        assert_eq!(parse_prefix("unreachable 2606:4700:abcd::/56 dev lo metric 1024"), Some("2606:4700:abcd::/56".into()));
+        assert_eq!(parse_prefix("unreachable 2606:4700::/32 dev lo"), None);
+        let j = br#"[{"ifname":"br0","addr_info":[{"local":"2606:4700:0:1::1","prefixlen":64,"scope":"global"},{"local":"fe80::1","prefixlen":64,"scope":"link"}]},
+                    {"ifname":"wan","addr_info":[{"local":"2606:4700:9::2","prefixlen":128,"scope":"global"}]}]"#;
+        let a: Vec<_> = parse_addr_json(j).into_iter().filter(|a| a.3 == "global").collect();
+        assert_eq!(a.len(), 2);
+        let adr: Vec<_> = a.iter().filter_map(|(i, ip, p, _)| cidr6(&format!("{ip}/{p}")).map(|(n, m)| (i.clone(), n, m, ip.clone()))).collect();
+        let lan = lan_prefixes6(&adr, "wan");
+        assert_eq!(lan.len(), 1);
+        assert_eq!((lan[0].0.as_str(), lan[0].2.count_ones()), ("br0", 64));
     }
 
     #[test]
@@ -1185,8 +1363,10 @@ mod tests {
         assert!(is_new(t - 86400.0, start, t));
         assert!(!is_new(t - 8.0 * 86400.0, start, t), "too old");
         let own = vec![("lan".to_string(), 0, 0, "192.0.2.1".to_string())];
-        assert!(is_router("127.0.0.1", &own) && is_router("127.3.2.1", &own) && is_router("192.0.2.1", &own));
-        assert!(!is_router("192.0.2.9", &own));
+        let own6 = vec![("lan".to_string(), 0, 0, "2001:db8:0:1::1".to_string())];
+        assert!(is_router("127.0.0.1", &own, &[]) && is_router("127.3.2.1", &own, &[]) && is_router("192.0.2.1", &own, &[]));
+        assert!(is_router("::1", &[], &[]) && is_router("2001:db8:0:1::1", &own, &own6));
+        assert!(!is_router("192.0.2.9", &own, &own6) && !is_router("2001:db8:0:1::2", &own, &own6));
         let mut m: HashMap<String, f64> = (0..10).map(|i| (format!("d{i}.example"), i as f64)).collect();
         cap_map(&mut m, 10);
         assert_eq!(m.len(), 10);

@@ -33,8 +33,11 @@ in
     lists = lib.mkOption { type = lib.types.str; default = "/var/lib/listes"; description = "Directory of the blocklists (threats.hosts, ads.hosts, ip.txt)."; };
     networks = lib.mkOption {
       type = lib.types.listOf lib.types.str;
-      default = [ "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" ];
-      description = "Blocks considered local; the page shows the subnets of the interfaces (except WAN) found in them.";
+      default = [ "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "fe80::/10" "fc00::/7" ];
+      description = ''
+        Blocks considered local (IPv4 or IPv6 CIDRs). The page shows the IPv4 subnets of the interfaces (except WAN) found in them.
+        The IPv6 prefixes of the non-WAN interfaces (e.g. a delegated /64) are always local and shown, whatever is listed here.
+      '';
     };
     dhcp = lib.mkOption {
       type = lib.types.listOf lib.types.str;

@@ -305,7 +305,7 @@ const D = {
     st_active: "active", st_unknown: "unknown", name_router: "router", lat_Gateway: "Gateway", lat_Internet: "Internet", to: "to {0}",
     f_online: "Online", f_offline: "Offline", f_new: "New", f_static: "Static IP", n_devices: "{0} online of {1}", shown: " · {0} shown", no_device: "No devices", show_more_dev: "Show {0} more",
     online: "online", offline: "offline", unnamed: "Unnamed", tag_new: "new", tag_static: "static IP", lease: "DHCP lease", last_seen: "last seen {0}",
-    online_n: "{0} online", dhcp_used: "DHCP {0}% used", no_dhcp: "No DHCP range", down: "down",
+    online_n: "{0} online", dhcp_used: "DHCP {0}% used", no_dhcp: "No DHCP range", down: "down", slaac: "IPv6 (SLAAC)", ipv6_on: " · IPv6 {0}", ipv6_none: " · no IPv6",
     technical: "Technical traffic (reverse DNS, mDNS, WPAD…): {0}.",
     none: "None", none_f: "None", nobody: "Nobody", no_queries: "No queries", nothing_blocked: "Nothing blocked",
     tab_new: "New", tab_ads: "Ads", tab_threats: "Threats", tab_nodns: "No DNS",
@@ -337,7 +337,7 @@ const D = {
     st_active: "actif", st_unknown: "inconnu", name_router: "routeur", lat_Gateway: "Passerelle", lat_Internet: "Internet", to: "vers {0}",
     f_online: "En ligne", f_offline: "Hors ligne", f_new: "Nouveaux", f_static: "IP fixe", n_devices: "{0} en ligne sur {1}", shown: " · {0} affichés", no_device: "Aucun appareil", show_more_dev: "Afficher les {0} autres",
     online: "en ligne", offline: "hors ligne", unnamed: "Sans nom", tag_new: "nouveau", tag_static: "IP fixe", lease: "bail DHCP", last_seen: "dernier vu {0}",
-    online_n: "{0} en ligne", dhcp_used: "DHCP {0} % occupé", no_dhcp: "Pas de plage DHCP", down: "coupé",
+    online_n: "{0} en ligne", dhcp_used: "DHCP {0} % occupé", no_dhcp: "Pas de plage DHCP", down: "coupé", slaac: "IPv6 (SLAAC)", ipv6_on: " · IPv6 {0}", ipv6_none: " · pas d'IPv6",
     technical: "Trafic technique (DNS inverse, mDNS, WPAD…) : {0}.",
     none: "Aucun", none_f: "Aucune", nobody: "Personne", no_queries: "Aucune requête", nothing_blocked: "Rien de bloqué",
     tab_new: "Nouveaux", tab_ads: "Pubs", tab_threats: "Menaces", tab_nodns: "Sans DNS",
@@ -625,7 +625,8 @@ function render() {
   mini("k-rx", h1.rx.slice(-60)); mini("k-tx", h1.tx.slice(-60)); mini("k-lat", lat); mini("k-dns", d.per_hour.queries, 1);
 
   $("totals").textContent = h ? t("totals", bytes(h.day.rx), bytes(h.day.tx), bytes(h.month.rx), bytes(h.month.tx)) : "";
-  $("wan-link").textContent = t(w.state === "up" ? "link_up" : "link_down", e.wan) + (w.speed ? t("at", speed(w.speed)) : "");
+  $("wan-link").textContent = t(w.state === "up" ? "link_up" : "link_down", e.wan) + (w.speed ? t("at", speed(w.speed)) : "")
+    + (e.ipv6 ? (e.ipv6.prefix || e.ipv6.wan[0] ? t("ipv6_on", esc(e.ipv6.prefix || e.ipv6.wan[0])) : t("ipv6_none")) : "");
   const age = health.lists_updated ? (e.now - health.lists_updated) / 3600 : null;
   put("health", [
     ...health.latencies.map(x => `<div class="indicator"><i class="pt ${x.ms == null ? "ko" : "ok"}"></i>${lat_(x.name)} <span>${x.ms == null ? t("no_answer") : ms(x) + " ms"}</span></div>`),
@@ -654,8 +655,8 @@ function render() {
     const l = e.interfaces[r.interface] || {}, p = r.range ? r.leases / r.range.size : 0;
     return `<div class="netcard"><h4>${esc(r.name || r.cidr)}<i class="pt ${l.state === "up" ? "ok" : ""}" title="${esc(tr("st_", l.state || "unknown"))}"></i></h4>
       <p class="mono">${esc(r.cidr)}${l.speed ? ` · ${speed(l.speed)}` : ""}</p>
-      <p>${t("online_n", fmt(r.online))} · ${pl(r.leases, "lease")} · ${pl(r.static_ips, "static_ip")}</p>
-      ${r.range ? `<div class="gauge${p >= .9 ? " full" : ""}" style="--f:${Math.min(p, 1).toFixed(3)}"><i></i></div><p>${t("dhcp_used", fmt(Math.round(p * 100)))}</p>` : `<p>${t("no_dhcp")}</p>`}</div>`;
+      ${r.family === 6 ? `<p>${t("slaac")}</p>` : `<p>${t("online_n", fmt(r.online))} · ${pl(r.leases, "lease")} · ${pl(r.static_ips, "static_ip")}</p>
+      ${r.range ? `<div class="gauge${p >= .9 ? " full" : ""}" style="--f:${Math.min(p, 1).toFixed(3)}"><i></i></div><p>${t("dhcp_used", fmt(Math.round(p * 100)))}</p>` : `<p>${t("no_dhcp")}</p>`}`}</div>`;
   }).join(""));
   put("interfaces", Object.entries(e.interfaces).map(([i, x]) => `<tr><td><i class="pt ${x.state === "up" ? "ok" : x.state === "down" && i === e.wan ? "ko" : ""}"></i>${esc(i)}<span class="sr"> ${esc(tr("st_", x.state))}</span></td>`
     + `<td class="num">${x.speed ? speed(x.speed) : x.state === "down" ? t("down") : ""}</td><td class="num">↓ ${rate(x.rx)}</td><td class="num">↑ ${rate(x.tx)}</td><td class="num muted">${x.errors ? pl(x.errors, "error") : ""}</td></tr>`).join(""));

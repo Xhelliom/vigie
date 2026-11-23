@@ -16,7 +16,7 @@ Vigie does no authentication: restrict access to the port with the router's fire
 - DHCP leases `/var/lib/dnsmasq/dnsmasq.leases`
 - blocklists `<lists>/{threats.hosts,ads.hosts,ip.txt}` (dnsmasq must load `threats.hosts` and `ads.hosts` as hosts files: the file name in the log is what classifies a block)
 - `/proc/net/arp`: devices present right now, and static addresses (present without a DHCP lease)
-- `ip -j addr`, `/sys/class/net/*/{operstate,speed}`: networks, link state and speed
+- `ip -j addr`, `/sys/class/net/*/{operstate,speed}`: networks, link state and speed; `ip -6 neigh`, `ip -6 route`: IPv6 neighbours and delegated prefix
 - `ping` (every 30 s): latency of the WAN gateway and of the `probes` targets; `systemctl is-active`: service state
 
 ## Usage (NixOS)
@@ -34,7 +34,7 @@ services.vigie = {
   wan = "enp1s0";
   # listen = "0.0.0.0:8080";
   # lists = "/var/lib/listes";
-  # networks = [ "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" ];  # default: RFC 1918 private ranges
+  # networks = [ "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16" "fe80::/10" "fc00::/7" ];  # default: RFC 1918 + link-local/ULA
   # probes = [ "1.1.1.1" ];  # Internet latency targets
   # services = [ "dnsmasq" "unbound" "nftables" ];  # systemd units shown
   # Expected traffic, kept apart from the domain ranking (default: common NTP domains)
@@ -50,7 +50,7 @@ services.vigie = {
 | `wan` | (required) | WAN interface |
 | `listen` | `0.0.0.0:8080` | HTTP listen address:port |
 | `lists` | `/var/lib/listes` | blocklist directory (`threats.hosts`, `ads.hosts`, `ip.txt`) |
-| `networks` | RFC 1918 ranges | blocks considered local |
+| `networks` | RFC 1918 + `fe80::/10` `fc00::/7` | blocks considered local (IPv4 or IPv6) |
 | `dhcp` | from `services.dnsmasq.settings.dhcp-range` | DHCP ranges shown, `name,start,end` |
 | `probes` | `[ "1.1.1.1" ]` | ping targets for Internet latency |
 | `services` | `[ "dnsmasq" "unbound" "nftables" ]` | systemd units shown |
@@ -78,7 +78,7 @@ Everything is read-only, unauthenticated, and nothing spawns a process per reque
 | `GET /api/device?ip=…` | card of a device: `{"ip","name","queries_24h","per_hour","groups","expected","ads","threats","blocked":[{domain,list,n}]}` (`per_hour`: 24 hourly buckets, the last = the hour just elapsed) |
 
 `/api/status` top-level keys: `now`, `system` (`uptime`, `load`, `memory{total,available}`, `temperature`, `blocklists{threats,ads,ip}`), `interfaces` (per interface: `rx`, `tx`, `state`, `speed`, `errors`, `drops`), `wan`,
-`wan_totals{day,month}`, `devices[]`, `networks[]`, `static_ips[]`, `health{latencies,services,lists_updated}`, `top_talkers[]`, `dns`, `no_dns[]`.
+`wan_totals{day,month}`, `devices[]`, `networks[]` (IPv6 LAN prefixes have `"family":6`), `ipv6{prefix,wan[]}`, `static_ips[]`, `health{latencies,services,lists_updated}`, `top_talkers[]`, `dns`, `no_dns[]`.
 
 Notes:
 
@@ -100,7 +100,7 @@ Memory added: WAN series of 720 points (5 s) + 1440 points (minute) + 120 latenc
 | `VIGIE_DNS_LOG` | `/run/dnsmasq/requetes.log` | dnsmasq query log |
 | `VIGIE_LEASES` | `/var/lib/dnsmasq/dnsmasq.leases` | DHCP leases |
 | `VIGIE_PAGE` | embedded page | HTML file served instead of the embedded page |
-| `VIGIE_NETWORKS` | `10.0.0.0/8 172.16.0.0/12 192.168.0.0/16` | local blocks (IP membership); the "Networks" cards are the subnets of the non-WAN interfaces within these blocks |
+| `VIGIE_NETWORKS` | `10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fe80::/10 fc00::/7` | local blocks, IPv4 or IPv6 (IP membership); the IPv4 "Networks" cards are the subnets of the non-WAN interfaces within these blocks |
 | `VIGIE_DHCP` | none (the module derives them from `services.dnsmasq.settings.dhcp-range`) | DHCP ranges `name,start,end`, space-separated |
 | `VIGIE_PROBES` | `1.1.1.1` | ping targets for Internet latency |
 | `VIGIE_SERVICES` | `dnsmasq unbound nftables` | monitored systemd units |
@@ -116,3 +116,10 @@ if the new file does not exist yet, the old one is read (and the old field names
 ## License
 
 MIT.
+
+## IPv6
+
+- Conntrack and DNS (AAAA, IPv6 clients) are read like IPv4. An IPv6 address is attributed to the device with the same MAC: kernel neighbour table (`ip -6 neigh`, once per 5 s cycle) gives MAC, then the DHCP lease (else the ARP entry) gives the device's IPv4. Rates, queries and blocks of both families are summed on that device.
+- Limits: a SLAAC/privacy address the router has never exchanged a packet with has no neighbour entry, so it appears under its own address (until it does); a device with no IPv4 lease or ARP entry (IPv6-only, or a MAC that differs between interfaces) also stays under its IPv6 addresses. Mappings are cached (8192 entries max) so rotated privacy addresses keep their device while their connections live.
+- Link-local (`fe80::/10`) and multicast traffic is not counted. The IPv6 prefixes of the non-WAN interfaces are local automatically (the delegated prefix may change) and shown as "Networks" cards.
+- The WAN header shows the delegated prefix when it is visible as an `unreachable` route (a global /48 to /63; dhcpcd/odhcp6c may not install one), else the WAN's global address.
