@@ -86,19 +86,35 @@
   .tuile b { display:block; margin-top:2px; font-size:30px; font-weight:620; letter-spacing:-.035em; line-height:1.15; font-variant-numeric:tabular-nums; white-space:nowrap; }
   .tuile b small, .num small { font-size:.45em; font-weight:500; letter-spacing:0; margin-left:3px; color:var(--doux); }
   .tuile p { margin:0; font-size:12.5px; color:var(--doux); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .tuile .mini { position:absolute; right:12px; bottom:10px; width:42%; height:28px; }
+  .tuile .mini { position:absolute; right:12px; bottom:10px; width:36%; height:28px; }
   .tuile.rx b::before, .tuile.tx b::before { content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--mer); vertical-align:middle; }
   .tuile.tx b::before { background:var(--serie2); }
 
   /* C : trafic et « à regarder » */
   .trafic { display:flex; flex-direction:column; min-height:240px; }
-  .trace { flex:1; min-height:0; margin:0; display:flex; flex-direction:column; }
-  .trace figcaption { text-align:right; margin-bottom:4px; font-size:12.5px; color:var(--doux); }
-  .trace svg { flex:1; width:100%; min-height:0; display:block; overflow:visible; }
-  #base { stroke:var(--filet); stroke-width:1; vector-effect:non-scaling-stroke; }
+  .barre { display:flex; justify-content:space-between; align-items:center; gap:4px 12px; flex-wrap:wrap; margin-bottom:8px; }
+  .per { display:inline-flex; gap:2px; padding:2px; border-radius:9px; background:var(--filet); }
+  .per button { font:inherit; font-size:12.5px; padding:2px 10px; border:0; border-radius:7px; background:none; color:var(--doux); cursor:pointer; }
+  .per button[aria-pressed=true] { background:var(--surface); color:var(--texte); box-shadow:0 1px 2px rgba(0,0,0,.18); }
+  .leg { font-size:12.5px; color:var(--doux); }
+  .leg i { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--mer); margin:0 5px 0 12px; }
+  .leg i.b { background:var(--serie2); }
+  .graphe { position:relative; flex:1; min-height:120px; touch-action:pan-y; cursor:crosshair; }
+  .graphe svg { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+  #grille { fill:none; stroke:var(--filet); stroke-width:1; vector-effect:non-scaling-stroke; }
   #ligne-rx { fill:none; stroke:var(--mer); stroke-width:2; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
   #ligne-tx { fill:none; stroke:var(--serie2); stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
-  #cumul { margin:6px 0 0; font-size:12.5px; color:var(--doux); }
+  #barres .br { fill:var(--mer); } #barres .bt { fill:var(--serie2); }
+  #ys span { position:absolute; left:0; transform:translateY(-50%); padding:0 4px 0 0; font-size:11.5px; color:var(--doux); pointer-events:none; }
+  #guide { position:absolute; top:0; bottom:0; width:1px; background:var(--doux); opacity:.6; pointer-events:none; }
+  #bulle { position:absolute; top:2px; z-index:2; padding:4px 8px; border-radius:8px; font-size:12px; line-height:1.35; white-space:nowrap; pointer-events:none;
+    background:var(--surface); border:1px solid var(--filet); box-shadow:0 6px 16px -6px rgba(0,0,0,.35); }
+  .xs { display:flex; justify-content:space-between; margin-top:3px; font-size:11.5px; color:var(--doux); }
+  .mini svg { display:block; width:100%; height:100%; overflow:visible; }
+  .mini path { fill:none; stroke:var(--c, var(--mer)); stroke-width:1.5; vector-effect:non-scaling-stroke; stroke-linejoin:round; }
+  .mini rect { fill:var(--c, var(--mer)); opacity:.75; }
+  .m2 p { max-width:60%; } #k-tx { --c:var(--serie2); }
+  #cumul { margin:4px 0 0; font-size:12.5px; color:var(--doux); }
   .alertes { display:flex; flex-direction:column; }
   .alertes ul { overflow-y:auto; flex:1; min-height:0; margin-top:0; }
   .al { align-items:center; justify-content:flex-start; }
@@ -198,21 +214,25 @@
 </header>
 
 <main class="page"><div class="grille">
-  <section class="tuile rx" id="k-rx"><h2>Réception</h2><b>–</b><p></p><div class="mini"></div></section>
-  <section class="tuile tx" id="k-tx"><h2>Émission</h2><b>–</b><p></p><div class="mini"></div></section>
-  <section class="tuile" id="k-lat"><h2>Latence Internet</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile rx m2" id="k-rx"><h2>Réception</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile tx m2" id="k-tx"><h2>Émission</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile m2" id="k-lat"><h2>Latence Internet</h2><b>–</b><p></p><div class="mini"></div></section>
   <section class="tuile" id="k-app"><h2>Appareils en ligne</h2><b>–</b><p></p></section>
-  <section class="tuile" id="k-dns"><h2>Requêtes DNS 24 h</h2><b>–</b><p></p><div class="mini"></div></section>
+  <section class="tuile m2" id="k-dns"><h2>Requêtes DNS 24 h</h2><b>–</b><p></p><div class="mini"></div></section>
   <section class="tuile" id="k-blo"><h2>Bloqué 24 h</h2><b>–</b><p></p></section>
 
   <section class="pan trafic" id="trafic"><h3>Trafic WAN <span id="lien-wan"></span></h3>
-    <figure class="trace"><figcaption id="legende">5 dernières minutes</figcaption>
-      <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+    <div class="barre"><div class="per" role="group" aria-label="Période"><button data-p="5m">5 min</button><button data-p="1h">1 h</button><button data-p="24h">24 h</button><button data-p="30j">30 j</button></div>
+      <span class="leg"><i></i>Réception<i class="b"></i>Émission</span></div>
+    <div class="graphe" id="graphe" role="img">
+      <svg viewBox="0 0 1000 100" preserveAspectRatio="none" aria-hidden="true">
         <defs><linearGradient id="degrade" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" style="stop-color:var(--mer);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--mer);stop-opacity:0"/>
         </linearGradient></defs>
-        <path id="base" d="M0,150L600,150"/><path id="aire" fill="url(#degrade)"/><path id="ligne-rx"/><path id="ligne-tx"/>
-      </svg></figure>
+        <path id="grille"/><path id="aire" fill="url(#degrade)"/><g id="barres"></g><path id="ligne-rx"/><path id="ligne-tx"/>
+      </svg>
+      <div id="ys" aria-hidden="true"></div><div id="guide" hidden></div><div id="bulle" hidden></div></div>
+    <div class="xs" id="xs" aria-hidden="true"></div>
     <p id="cumul"></p></section>
   <section class="pan alertes" id="alertes-p"><h3>À regarder <span id="n-alertes"></span></h3><ul id="alertes"></ul><div class="sante" id="sante"></div></section>
   <section class="pan" id="s-menaces" hidden><h3>Domaines malveillants bloqués <span>24 h</span></h3><ul id="menaces"></ul></section>
@@ -293,15 +313,88 @@ document.addEventListener("click", ev => {
   else if (ev.target === $("fiche")) $("fiche").close();
 });
 
-const hist = [], N = 60; // 60 × 5 s = 5 min
+// Préférences de l'interface, gardées dans le navigateur (jamais bloquant)
+const ui = {per: "5m"};
+try { Object.assign(ui, JSON.parse(localStorage.getItem("vigie") || "{}")); } catch (err) {}
+const sauver = () => { try { localStorage.setItem("vigie", JSON.stringify(ui)); } catch (err) {} };
+
+// Séries : 1 h à pas de 5 s lue au chargement puis prolongée par /api/etat ; 24 h et 30 j relues au plus toutes les 5 min
+const PER = {"5m": {N: 60, pas: 5}, "1h": {N: 720, pas: 5}, "24h": {N: 1440, pas: 60}, "30j": {N: 30, pas: 86400, barres: 1}};
+const h1 = {rx: [], tx: [], fin: 0}, lat = [], longues = {};
+async function api(p) { try { const r = await fetch("api/historique?p=" + p); return r.ok ? await r.json() : null; } catch (err) { return null; } }
+async function charger1h() {
+  const j = await api("1h");
+  if (!j) return;
+  Object.assign(h1, {rx: j.rx || [], tx: j.tx || [], fin: j.fin});
+  lat.length = 0;
+  lat.push(...((j.latences || []).find(x => x.nom === "Internet")?.ms || []));
+}
+async function chargerLongue(p) {
+  const j = await api(p);
+  if (j) longues[p] = {...j, t: Date.now()};
+  tracer();
+}
+const serie = p => {
+  const c = PER[p], l = longues[p], src = p === "5m" || p === "1h" ? h1 : l || {rx: [], tx: [], fin: Date.now() / 1000};
+  return {...c, rx: src.rx.slice(-c.N), tx: src.tx.slice(-c.N), fin: src.fin};
+};
+const nice = (v, u = 1) => { v /= u; const e = 10 ** Math.floor(Math.log10(v)), m = v / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * e * u; };
+const fr2 = n => n.toLocaleString("fr-FR", {maximumFractionDigits: 2});
+const bits = n => n >= 1e9 ? fr2(n / 1e9) + " Gb/s" : n >= 1e6 ? fr2(n / 1e6) + " Mb/s" : n >= 1e3 ? fr2(n / 1e3) + " kb/s" : fr2(n) + " b/s";
+const octets = n => n >= 2 ** 30 ? fr2(n / 2 ** 30) + " Gio" : n >= 2 ** 20 ? fr2(n / 2 ** 20) + " Mio" : n >= 1024 ? fr2(n / 1024) + " Kio" : fr2(n) + " o";
+const hm = t => new Date(t * 1000).toLocaleTimeString("fr-FR", {hour: "2-digit", minute: "2-digit"});
+const jm = t => new Date(t * 1000).toLocaleDateString("fr-FR", {day: "numeric", month: "short"});
+let courbe = null; // ce que le survol doit lire
 function tracer() {
-  if (hist.length < 2) return;
-  const m = Math.max(1, ...hist.flatMap(h => [h.rx, h.tx])), x = i => (i * 600 / (N - 1)).toFixed(1), y = v => (150 - v / m * 140).toFixed(1);
-  const dep = N - hist.length, ligne = k => hist.map((h, i) => `${i ? "L" : "M"}${x(dep + i)},${y(h[k])}`).join("");
-  $("ligne-rx").setAttribute("d", ligne("rx"));
-  $("ligne-tx").setAttribute("d", ligne("tx"));
-  $("aire").setAttribute("d", `${ligne("rx")}L${x(N - 1)},150L${x(dep)},150Z`);
-  $("legende").textContent = `5 dernières minutes, pic ${b(m)}`;
+  const p = ui.per, s = serie(p), n = s.rx.length, bar = s.barres, k = bar ? 1 : 8, N = s.N;
+  const mx = Math.max(bar ? 3 * 2 ** 20 : 3e3, Math.max(0, ...s.rx, ...s.tx) * k) / 3, top = nice(mx, bar ? 1024 ** Math.max(0, Math.floor(Math.log(mx) / Math.log(1024))) : 1) * 3;
+  const X = i => (N - n + i) / (bar ? N : N - 1) * 1000, Y = v => (100 - Math.min(v * k / top, 1) * 100).toFixed(1);
+  const ligne = a => a.map((v, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(v)}`).join("");
+  $("grille").setAttribute("d", [1, 2, 3].map(j => `M0,${(100 - j * 100 / 3).toFixed(1)}L1000,${(100 - j * 100 / 3).toFixed(1)}`).join("") + "M0,100L1000,100");
+  $("ligne-rx").setAttribute("d", bar || !n ? "" : ligne(s.rx));
+  $("ligne-tx").setAttribute("d", bar || !n ? "" : ligne(s.tx));
+  $("aire").setAttribute("d", bar || n < 2 ? "" : `${ligne(s.rx)}L${X(n - 1).toFixed(1)},100L${X(0).toFixed(1)},100Z`);
+  const w = 1000 / N;
+  $("barres").innerHTML = bar ? s.rx.map((v, i) => `<rect class="br" x="${(X(i) + w * .08).toFixed(1)}" y="${Y(v)}" width="${(w * .38).toFixed(1)}" height="${(100 - Y(v)).toFixed(1)}"/>`
+    + `<rect class="bt" x="${(X(i) + w * .46).toFixed(1)}" y="${Y(s.tx[i])}" width="${(w * .38).toFixed(1)}" height="${(100 - Y(s.tx[i])).toFixed(1)}"/>`).join("") : "";
+  const f = bar ? octets : bits;
+  $("ys").innerHTML = [1, 2, 3].map(j => `<span style="top:${(100 - j * 100 / 3).toFixed(1)}%">${f(top / 3 * j)}</span>`).join("");
+  const T = i => s.fin - (N - 1 - i) * s.pas, fmt = bar ? jm : hm;
+  $("xs").innerHTML = n ? `<span>${fmt(T(0))}</span><span>${fmt(T((N - 1) / 2))}</span><span>${fmt(s.fin)}</span>` : "";
+  $("graphe").setAttribute("aria-label", n ? `Trafic WAN, pic ↓ ${bar ? octets(Math.max(...s.rx)) : bits(Math.max(...s.rx) * 8)} ↑ ${bar ? octets(Math.max(...s.tx)) : bits(Math.max(...s.tx) * 8)}` : "Pas encore de données");
+  courbe = {s, n, N, bar, T};
+  document.querySelectorAll(".per button").forEach(x => x.setAttribute("aria-pressed", x.dataset.p === p));
+}
+function survol(ev) {
+  if (!courbe || !courbe.n) return;
+  const {s, n, N, bar, T} = courbe, r = $("graphe").getBoundingClientRect(), fr_ = Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1);
+  const i = Math.round(bar ? fr_ * N - .5 : fr_ * (N - 1)) - (N - n);
+  if (i < 0 || i >= n) return void ($("guide").hidden = $("bulle").hidden = true);
+  const pos = (N - n + i + (bar ? .5 : 0)) / (bar ? N : N - 1) * 100;
+  $("guide").style.left = pos + "%"; $("guide").hidden = false;
+  const bu = $("bulle");
+  bu.innerHTML = `<b>${(bar ? jm : hm)(T(i))}</b><br>↓ ${bar ? octets(s.rx[i]) : b(s.rx[i])} · ↑ ${bar ? octets(s.tx[i]) : b(s.tx[i])}`;
+  bu.hidden = false;
+  bu.style.left = pos + "%"; bu.style.transform = pos > 60 ? "translateX(calc(-100% - 8px))" : "translateX(8px)";
+}
+$("graphe").addEventListener("pointermove", survol);
+$("graphe").addEventListener("pointerleave", () => $("guide").hidden = $("bulle").hidden = true);
+$("trafic").addEventListener("click", ev => {
+  const p = ev.target.closest("button[data-p]")?.dataset.p;
+  if (!p) return;
+  ui.per = p; sauver(); tracer();
+  const l = longues[p];
+  if (PER[p].pas > 5 && (!l || Date.now() - l.t > 3e5)) chargerLongue(p);
+});
+// Mini-courbes (valeurs nulles = trou) et barres, sans axes
+function mini(id, v, bar) {
+  const el = $(id).querySelector(".mini"), n = v.length, m = Math.max(1e-9, ...v.filter(x => x != null));
+  if (!n) return void (el.innerHTML = "");
+  const w = 100 / n;
+  let h = "";
+  if (bar) h = v.map((x, i) => `<rect x="${(i * w + .4).toFixed(1)}" y="${(28 - x / m * 28).toFixed(1)}" width="${(w - .8).toFixed(1)}" height="${(x / m * 28).toFixed(1)}"/>`).join("");
+  else { let d = "", up = 0; v.forEach((x, i) => { if (x == null) up = 0; else { d += `${up ? "L" : "M"}${(i * 100 / Math.max(n - 1, 1)).toFixed(1)},${(27 - x / m * 26).toFixed(1)}`; up = 1; } }); h = `<path d="${d}"/>`; }
+  el.innerHTML = `<svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">${h}</svg>`;
 }
 const tuile = (id, val, sous) => { const t = $(id); t.querySelector("b").innerHTML = val; t.querySelector("p").textContent = sous; };
 const vitesse = v => v == null ? "" : v >= 1000 ? `${fr(v/1000)} Gb/s` : `${fr(v)} Mb/s`;
@@ -340,7 +433,7 @@ const ligneTab = x => `<tr><td class="nom"><i class="pt ${x.en_ligne ? "ok" : ""
   + `<td class="num d">${x.debit > 0 ? b(x.debit) : "–"}</td><td class="num q">${nb(x.requetes)}</td><td class="num b">${nb(x.bloques)}</td>`
   + `<td class="num">${x.en_ligne ? "en ligne" : date(x.vu)}</td><td class="num m">${date(x.premier)}</td></tr>`;
 
-let derniere = null;
+let derniere = null, latT = 0;
 async function maj() {
   try {
     const e = await (await fetch("api/etat")).json(), s = e.systeme, w = e.interfaces[e.wan] || {}, sante = e.sante, d = e.dns, h = e.historique_wan;
@@ -359,11 +452,16 @@ async function maj() {
     tuile("k-tx", `${tx}<small>${utx}</small>`, h ? `Aujourd'hui ${o(h.jour.tx)}` : "");
     tuile("k-lat", `${ms(net)}<small>${net && net.ms != null ? "ms" : ""}</small>`, pass ? `Passerelle ${ms(pass)}${pass.ms != null ? " ms" : ""}` : "");
     tuile("k-app", `${fr(enLigne)}<small>sur ${fr(lignesApp.length)}</small>`, nvx ? `+${fr(nvx)} ${nvx > 1 ? "nouveaux" : "nouveau"}` : "aucun nouveau");
-    tuile("k-dns", fr(d.requetes_24h), `dont ${fr(d.technique.n)} techniques`);
+    tuile("k-dns", fr(d.requetes_24h), `${fr(d.technique.n)} techniques`);
     tuile("k-blo", `${fr(d.requetes_24h ? bloq * 100 / d.requetes_24h : 0, 1)}<small>%</small>`, `${pl(d.bloques_24h.pub, "pub", "pubs")}, ${pl(d.bloques_24h.menaces, "menace", "menaces")}`);
 
-    hist.push({rx: w.rx || 0, tx: w.tx || 0}); if (hist.length > N) hist.shift();
+    h1.rx.push(w.rx || 0); h1.tx.push(w.tx || 0); h1.fin = e.maintenant;
+    if (h1.rx.length > 720) { h1.rx.shift(); h1.tx.shift(); }
+    if (net && net.ms !== undefined && e.maintenant - latT >= 30) { lat.push(net.ms); latT = e.maintenant; if (lat.length > 120) lat.shift(); }
     tracer();
+    mini("k-rx", h1.rx.slice(-60)); mini("k-tx", h1.tx.slice(-60)); mini("k-lat", lat); mini("k-dns", d.par_heure.requetes, 1);
+    const l = longues[ui.per];
+    if (PER[ui.per].pas > 5 && (!l || Date.now() - l.t > 3e5)) chargerLongue(ui.per);
     $("cumul").textContent = h ? `Aujourd'hui ${o(h.jour.rx)} reçus et ${o(h.jour.tx)} envoyés. Ce mois-ci ${o(h.mois.rx)} reçus et ${o(h.mois.tx)} envoyés.` : "";
     $("lien-wan").textContent = `${e.wan} ${w.etat === "up" ? "connecté" : "coupé"}${w.vitesse ? " à " + vitesse(w.vitesse) : ""}`;
     const age = sante.listes_maj ? (e.maintenant - sante.listes_maj) / 3600 : null;
@@ -416,7 +514,7 @@ async function maj() {
     $("maj").textContent = derniere ? `Chiffres de ${heure(derniere)}` : "";
   }
 }
-maj(); setInterval(maj, 5000);
+charger1h().then(() => { maj(); setInterval(maj, 5000); });
 </script>
 </body>
 </html>
