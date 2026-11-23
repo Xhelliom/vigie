@@ -49,6 +49,26 @@ domaine principal (dépliables), le trafic attendu est replié à part, et un cl
 Le routeur doit aussi activer `services.vnstat` et dnsmasq avec `log-queries=extra`. Le service tourne en
 root (lecture de conntrack) mais confiné (`ProtectSystem=strict`, `MemoryMax=96M`).
 
+## API
+
+Tout est en lecture seule, sans authentification, et rien ne lance de processus par requête (vnstat est interrogé 1×/min, `ip addr` toutes les 30 s).
+
+| Endpoint | Contenu |
+|---|---|
+| `GET /api/etat` | état complet (tous les champs historiques sont conservés ; les nouveaux sont des ajouts) |
+| `GET /api/historique?p=1h\|24h\|30j` | `{"fin","pas","unite","rx":[…],"tx":[…]}` : débit du WAN, le plus ancien d'abord, `fin` = date du dernier point. `1h` : pas 5 s, en o/s, avec `latences` (`[{"nom","cible","ms":[…]}]`, pas 30 s, `null` = sans réponse) ; `24h` : moyennes à la minute, en o/s ; `30j` : totaux journaliers vnstat, en octets. `p` invalide : 400 |
+| `GET /api/appareil?ip=…` | fiche d'un appareil : domaines, blocages, `par_heure` (24 tranches horaires, la dernière = l'heure écoulée) |
+
+Ajouts à `/api/etat` :
+
+- `dns.technique` `{"n","domaines":[[d,n]…5]}` : reverse DNS, `.local`, `_services`, `wpad`, noms courts ; comptés dans `requetes_24h` mais exclus des classements et des nouveautés
+- `dns.par_heure` `{"requetes":[24],"bloques":[24]}` (indice 0 = la plus ancienne), `dns.bloques_24h` `{"pub","menaces"}`
+- `dns.nouveaux_groupes` : jusqu'à 12 `{"domaine","n","dernier"}`, les nouveaux domaines de 24 h regroupés par domaine principal
+- `appareils[]` et `ip_fixes[]` : `debit` (o/s), `requetes` et `bloques` sur 24 h, `reseau`
+- le client `127.0.0.0/8` ou une adresse du routeur s'appelle `routeur` ; un appareil n'est « nouveau » qu'à partir d'une heure après le premier démarrage de la vigie, pendant 7 jours
+
+Mémoire ajoutée : séries WAN 720 points (5 s) + 1440 points (minute) + 120 points de latence par sonde (8 sondes max), `domaines_vus` plafonné à 20 000 entrées.
+
 ## Variables d'environnement
 
 | Variable | Défaut | Rôle |

@@ -159,13 +159,38 @@ struct Etat {
     services: Vec<(String, String)>,                   // (unité, is-active)
     vnstat: Option<Vnstat>,                            // cache rafraîchi chaque minute
     adresses: Vec<(String, u32, u32, String)>,         // cache de `ip addr` : (interface, réseau, masque, adresse)
+    anneau_5s: VecDeque<(f32, f32)>,                   // débit WAN (rx, tx) pas 5 s, ≤ 720 points (1 h)
+    anneau_min: VecDeque<(f32, f32)>,                  // moyenne à la minute, ≤ 1440 points (24 h)
+    lat_hist: Vec<(String, String, VecDeque<Option<f32>>)>, // (nom, cible, ms) pas 30 s, ≤ 8 sondes × 120 points (1 h)
+}
+
+const PTS_5S: usize = 720;
+const PTS_MIN: usize = 1440;
+const PTS_LAT: usize = 120;
+const MAX_SONDES: usize = 8;
+
+fn pousser<T>(q: &mut VecDeque<T>, v: T, max: usize) {
+    q.push_back(v);
+    while q.len() > max {
+        q.pop_front();
+    }
+}
+
+fn moyenne(v: &[(f32, f32)]) -> (f32, f32) {
+    let n = v.len().max(1) as f32;
+    v.iter().fold((0.0, 0.0), |a, p| (a.0 + p.0 / n, a.1 + p.1 / n))
+}
+
+/// Tranche horaire (0 = la plus ancienne, 23 = l'heure qui vient de s'écouler) d'un événement de date `ts`.
+fn tranche(t: f64, ts: f64) -> Option<usize> {
+    let age = ((t - ts) / 3600.0).floor();
+    (0.0..24.0).contains(&age).then(|| 23 - age as usize)
 }
 
 /// Totaux vnstat du WAN : (rx, tx) du jour, du mois, et des 30 derniers jours (le plus ancien d'abord).
 struct Vnstat {
     jour: (u64, u64),
     mois: (u64, u64),
-    #[allow(dead_code)] // servi par /api/historique?p=30j (étape suivante)
     jours: Vec<(u64, u64)>,
 }
 
@@ -405,6 +430,7 @@ fn boucle() {
     let mut prec_ct: HashMap<String, u64> = HashMap::new();
     let mut prec_t = maintenant();
     let mut derniere_sauvegarde = prec_t;
+    let mut pas = 0u32;
     loop {
         thread::sleep(Duration::from_secs(5));
         position = lire_journal_dns(position);
@@ -420,6 +446,13 @@ fn boucle() {
                 if let Some(&(prx, ptx)) = prec_if.get(i) {
                     e.debits_if.insert(i.clone(), (rx.saturating_sub(prx) as f64 / dt, tx.saturating_sub(ptx) as f64 / dt));
                 }
+            }
+            let wan = e.debits_if.get(&cfg().wan).copied().unwrap_or((0.0, 0.0));
+            pousser(&mut e.anneau_5s, (wan.0 as f32, wan.1 as f32), PTS_5S);
+            pas += 1;
+            if pas % 12 == 0 {
+                let derniers: Vec<_> = e.anneau_5s.iter().rev().take(12).copied().collect();
+                pousser(&mut e.anneau_min, moyenne(&derniers), PTS_MIN);
             }
             e.debits_appareils.clear();
             for (ip, &o) in &ct {
@@ -559,6 +592,16 @@ fn sondes() {
         let adresses = adresses_interfaces();
         {
             let mut e = verrou();
+            for (n, c, ms) in &latences {
+                let i = e.lat_hist.iter().position(|h| h.0 == *n && h.1 == *c).unwrap_or_else(|| {
+                    if e.lat_hist.len() >= MAX_SONDES {
+                        e.lat_hist.remove(0);
+                    }
+                    e.lat_hist.push((n.clone(), c.clone(), VecDeque::new()));
+                    e.lat_hist.len() - 1
+                });
+                pousser(&mut e.lat_hist[i].2, ms.map(|m| m as f32), PTS_LAT);
+            }
             e.latences = latences;
             e.services = services;
             e.adresses = adresses;
@@ -691,14 +734,18 @@ fn plus_frequents<K: Hash + Eq + Copy>(cles: impl Iterator<Item = K>, n: usize) 
     v
 }
 
-/// Requêtes → (trafic attendu, domaines groupés par domaine principal), en JSON.
-fn repartir<'a>(domaines: impl Iterator<Item = &'a str>) -> (Value, Value) {
-    let mut par_domaine: HashMap<&str, usize> = HashMap::new();
-    for d in domaines.filter(|d| !technique(d)) {
-        *par_domaine.entry(d).or_default() += 1;
-    }
+/// Les `n` entrées les plus fréquentes d'un compteur ; à égalité, ordre alphabétique.
+fn top<'a>(m: &HashMap<&'a str, usize>, n: usize) -> Vec<(&'a str, usize)> {
+    let mut v: Vec<_> = m.iter().map(|(&k, &c)| (k, c)).collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    v.truncate(n);
+    v
+}
+
+/// Compteur de domaines (hors trafic technique) → (trafic attendu, domaines groupés par domaine principal), en JSON.
+fn repartir(par_domaine: &HashMap<&str, usize>) -> (Value, Value) {
     let (mut connus, mut groupes): (Vec<(&str, usize)>, HashMap<&str, (usize, Vec<(&str, usize)>)>) = Default::default();
-    for (d, n) in par_domaine {
+    for (&d, &n) in par_domaine {
         if connu(d, &cfg().connus) {
             connus.push((d, n));
         } else {
@@ -726,20 +773,60 @@ fn repartir<'a>(domaines: impl Iterator<Item = &'a str>) -> (Value, Value) {
 /// Fiche d'un appareil : ses domaines et ce qui a été bloqué pour lui sur 24 h.
 fn fiche(ip: &str) -> Value {
     let e = verrou();
+    let t = maintenant();
     let nom = e.appareils.values().find(|a| a.ip.as_deref() == Some(ip)).and_then(|a| a.nom.clone())
         .or_else(|| cfg().noms.get(ip).cloned())
         .or_else(|| est_routeur(ip, &e.adresses).then(|| "routeur".into()));
-    let requetes: Vec<&str> = e.requetes.iter().filter(|r| r.1 == ip).map(|r| r.2.as_str()).collect();
-    let (attendu, groupes) = repartir(requetes.iter().copied());
+    let (mut total, mut par_domaine, mut par_heure) = (0, HashMap::new(), [0u32; 24]);
+    for r in e.requetes.iter().filter(|r| r.1 == ip) {
+        total += 1;
+        if let Some(h) = tranche(t, r.0) {
+            par_heure[h] += 1;
+        }
+        if !technique(&r.2) {
+            *par_domaine.entry(r.2.as_str()).or_default() += 1;
+        }
+    }
+    let (attendu, groupes) = repartir(&par_domaine);
     let bloques: Vec<_> = e.bloques.iter().filter(|b| b.1 == ip).collect();
     json!({
-        "ip": ip, "nom": nom, "requetes_24h": requetes.len(),
+        "ip": ip, "nom": nom, "requetes_24h": total, "par_heure": par_heure,
         "groupes": groupes, "attendu": attendu,
         "pub": bloques.iter().filter(|b| b.3 == "pub").count(),
         "menaces": bloques.iter().filter(|b| b.3 == "menaces").count(),
         "bloques": plus_frequents(bloques.iter().map(|b| (b.2.as_str(), b.3)), 20).into_iter()
             .map(|((d, l), n)| json!({"domaine": d, "liste": l, "n": n})).collect::<Vec<_>>(),
     })
+}
+
+/// GET /api/historique?p=1h|24h|30j : séries du WAN (et latences sur 1 h). `None` si `p` est invalide.
+fn historique(p: &str) -> Option<Value> {
+    let e = verrou();
+    let t = maintenant();
+    let ent = |v: f32| v.max(0.0).round() as u64;
+    let (pas, unite, rx, tx, latences): (u64, &str, Vec<u64>, Vec<u64>, Value) = match p {
+        "1h" => (5, "o/s", e.anneau_5s.iter().map(|p| ent(p.0)).collect(), e.anneau_5s.iter().map(|p| ent(p.1)).collect(),
+            json!(e.lat_hist.iter().map(|(n, c, ms)| json!({"nom": n, "cible": c, "ms": ms})).collect::<Vec<_>>())),
+        "24h" => (60, "o/s", e.anneau_min.iter().map(|p| ent(p.0)).collect(), e.anneau_min.iter().map(|p| ent(p.1)).collect(), Value::Null),
+        "30j" => {
+            let j = e.vnstat.as_ref().map(|v| v.jours.as_slice()).unwrap_or_default();
+            (86400, "o", j.iter().map(|x| x.0).collect(), j.iter().map(|x| x.1).collect(), Value::Null)
+        }
+        _ => return None,
+    };
+    let mut r = json!({"fin": t, "pas": pas, "unite": unite, "rx": rx, "tx": tx});
+    if !latences.is_null() {
+        r["latences"] = latences;
+    }
+    Some(r)
+}
+
+/// Compteurs par client, en une passe sur les requêtes et une sur les blocages.
+#[derive(Default)]
+struct Client {
+    requetes: usize,
+    pubs: usize,
+    menaces: usize,
 }
 
 fn etat() -> Value {
@@ -754,7 +841,8 @@ fn etat() -> Value {
     let en_ligne = |mac: &str| arp.iter().any(|v| v.1 == mac);
     let ip_fixes: Vec<_> = arp.iter().filter(|v| !baux.iter().any(|b| b.0 == v.1)).collect();
     let dans = |ip: &str, r: u32, m: u32| ip_u32(ip).is_some_and(|a| a & m == r);
-    let reseaux: Vec<Value> = reseaux_affiches(&adresses, &cfg().wan, &cfg().locaux).into_iter().map(|(r, m)| {
+    let affiches = reseaux_affiches(&adresses, &cfg().wan, &cfg().locaux);
+    let reseaux: Vec<Value> = affiches.iter().map(|&(r, m)| {
         let interface = adresses.iter().find(|a| a.1 == r && a.2 == m);
         let p = cfg().dhcp.iter().find(|p| p.1 & m == r);
         json!({
@@ -768,6 +856,10 @@ fn etat() -> Value {
             "ip_fixes": ip_fixes.iter().filter(|v| dans(&v.0, r, m)).count(),
         })
     }).collect();
+    // réseau (le plus précis) d'une IP, par son nom ou à défaut son CIDR
+    let etiquettes: Vec<(u32, u32, &str)> = affiches.iter().zip(&reseaux)
+        .map(|(&(r, m), v)| (r, m, v["nom"].as_str().or(v["cidr"].as_str()).unwrap_or(""))).collect();
+    let reseau_de = |ip: &str| etiquettes.iter().filter(|x| dans(ip, x.0, x.1)).max_by_key(|x| x.1.count_ones()).map(|x| x.2);
     let listes_maj = fs::metadata(Path::new(&cfg().listes).join("menaces.hosts")).and_then(|m| m.modified()).ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_secs_f64());
     let guard = verrou();
@@ -778,15 +870,58 @@ fn etat() -> Value {
         .or_else(|| est_routeur(ip, &adresses).then_some("routeur"));
     let plus_ancien = e.appareils.values().map(|a| a.premier).fold(f64::INFINITY, f64::min);
 
+    // une passe sur les requêtes, une sur les blocages
+    let (mut clients, mut par_domaine, mut technique_n) = (HashMap::<&str, Client>::new(), HashMap::<&str, usize>::new(), HashMap::<&str, usize>::new());
+    let (mut req_h, mut blo_h) = ([0u32; 24], [0u32; 24]);
+    for r in &e.requetes {
+        clients.entry(r.1.as_str()).or_default().requetes += 1;
+        *(if technique(&r.2) { &mut technique_n } else { &mut par_domaine }).entry(r.2.as_str()).or_default() += 1;
+        if let Some(h) = tranche(t, r.0) {
+            req_h[h] += 1;
+        }
+    }
+    let (mut n_pub, mut n_men) = (0, 0);
+    let mut menaces: HashMap<(&str, &str), usize> = HashMap::new();
+    for b in &e.bloques {
+        let c = clients.entry(b.1.as_str()).or_default();
+        if b.3 == "pub" {
+            c.pubs += 1;
+            n_pub += 1;
+        } else {
+            c.menaces += 1;
+            n_men += 1;
+            *menaces.entry((b.1.as_str(), b.2.as_str())).or_default() += 1;
+        }
+        if let Some(h) = tranche(t, b.0) {
+            blo_h[h] += 1;
+        }
+    }
+    let compte = |ip: Option<&str>| ip.and_then(|ip| clients.get(ip)).map_or((0, 0), |c| (c.requetes, c.pubs + c.menaces));
+    let debit = |ip: Option<&str>| ip.and_then(|ip| e.debits_appareils.get(ip)).copied().unwrap_or(0.0);
+
     let mut appareils: Vec<_> = e.appareils.iter().map(|(m, a)| (m, a, est_nouveau(a.premier, plus_ancien, t))).collect();
     appareils.sort_by(|a, b| (!a.2, a.1.ip.as_deref().unwrap_or("")).cmp(&(!b.2, b.1.ip.as_deref().unwrap_or(""))));
     let mut conso: Vec<_> = e.debits_appareils.iter().collect();
     conso.sort_by(|a, b| b.1.total_cmp(a.1));
-    let mut nouveaux: Vec<_> = e.domaines_vus.iter().filter(|(_, &ts)| t - ts < FENETRE).collect();
-    nouveaux.sort_by(|a, b| b.1.total_cmp(a.1));
     let mut sans_dns: Vec<_> = e.sans_dns.iter().collect();
     sans_dns.sort_by(|a, b| b.1.total_cmp(a.1));
-    let (attendu, groupes) = repartir(e.requetes.iter().map(|r| r.2.as_str()));
+    let (attendu, groupes) = repartir(&par_domaine);
+    let mut nouveaux: Vec<_> = e.domaines_vus.iter().filter(|(_, &ts)| t - ts < FENETRE).collect();
+    nouveaux.sort_by(|a, b| b.1.total_cmp(a.1));
+    let mut ng: HashMap<&str, (usize, f64)> = HashMap::new();
+    for (d, &ts) in &nouveaux {
+        let g = ng.entry(principal(d)).or_insert((0, 0.0));
+        g.0 += 1;
+        g.1 = g.1.max(ts);
+    }
+    let mut ng: Vec<_> = ng.into_iter().collect();
+    ng.sort_by(|a, b| b.1 .1.total_cmp(&a.1 .1).then(a.0.cmp(b.0)));
+    let mut tops: Vec<_> = clients.iter().map(|(&c, k)| (c, k.requetes)).collect();
+    tops.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    let mut pubs: Vec<_> = clients.iter().filter(|(_, k)| k.pubs > 0).map(|(&c, k)| (c, k.pubs)).collect();
+    pubs.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(b.0)));
+    let mut menaces: Vec<_> = menaces.into_iter().collect();
+    menaces.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
     json!({
         "maintenant": t,
@@ -794,13 +929,21 @@ fn etat() -> Value {
         "interfaces": e.debits_if.iter().map(|(i, &(rx, tx))| (i, lien(i, rx, tx))).collect::<BTreeMap<_, _>>(),
         "wan": cfg().wan,
         "historique_wan": historique_wan,
-        "appareils": appareils.iter().map(|(m, a, nouveau)| json!({
-            "mac": m, "premier": a.premier, "ip": a.ip, "vu": a.vu, "nouveau": nouveau,
-            "nom": a.nom.as_deref().or_else(|| a.ip.as_deref().and_then(|ip| cfg().noms.get(ip)).map(String::as_str)),
-            "en_ligne": en_ligne(&m.to_lowercase()), "bail": baux.iter().any(|b| b.0 == m.to_lowercase()),
-        })).collect::<Vec<_>>(),
+        "appareils": appareils.iter().map(|(m, a, nouveau)| {
+            let (req, blo) = compte(a.ip.as_deref());
+            json!({
+                "mac": m, "premier": a.premier, "ip": a.ip, "vu": a.vu, "nouveau": nouveau,
+                "nom": a.nom.as_deref().or_else(|| a.ip.as_deref().and_then(|ip| cfg().noms.get(ip)).map(String::as_str)),
+                "en_ligne": en_ligne(&m.to_lowercase()), "bail": baux.iter().any(|b| b.0 == m.to_lowercase()),
+                "debit": debit(a.ip.as_deref()), "requetes": req, "bloques": blo, "reseau": a.ip.as_deref().and_then(reseau_de),
+            })
+        }).collect::<Vec<_>>(),
         "reseaux": reseaux,
-        "ip_fixes": ip_fixes.iter().map(|(ip, mac, dev)| json!({"ip": ip, "mac": mac, "interface": dev, "nom": cfg().noms.get(ip.as_str())})).collect::<Vec<_>>(),
+        "ip_fixes": ip_fixes.iter().map(|(ip, mac, dev)| {
+            let (req, blo) = compte(Some(ip));
+            json!({"ip": ip, "mac": mac, "interface": dev, "nom": cfg().noms.get(ip.as_str()),
+                "debit": debit(Some(ip)), "requetes": req, "bloques": blo, "reseau": reseau_de(ip)})
+        }).collect::<Vec<_>>(),
         "sante": {
             "latences": e.latences.iter().map(|(n, c, ms)| json!({"nom": n, "cible": c, "ms": ms})).collect::<Vec<_>>(),
             "services": e.services.iter().map(|(n, s)| json!({"nom": n, "etat": s})).collect::<Vec<_>>(),
@@ -809,20 +952,17 @@ fn etat() -> Value {
         "gros_consommateurs": conso.iter().take(10).map(|(ip, d)| json!({"ip": ip, "nom": nom(ip), "debit": d})).collect::<Vec<_>>(),
         "dns": {
             "requetes_24h": e.requetes.len(),
-            "clients": plus_frequents(e.requetes.iter().map(|r| r.1.as_str()), 15).into_iter()
-                .map(|(c, n)| json!({"ip": c, "nom": nom(c), "n": n})).collect::<Vec<_>>(),
-            "domaines": plus_frequents(e.requetes.iter().map(|r| r.2.as_str()).filter(|d| !technique(d)), 25),
-            "technique": json!({
-                "n": e.requetes.iter().filter(|r| technique(&r.2)).count(),
-                "domaines": plus_frequents(e.requetes.iter().map(|r| r.2.as_str()).filter(|d| technique(d)), 5),
-            }),
+            "clients": tops.iter().take(15).map(|&(c, n)| json!({"ip": c, "nom": nom(c), "n": n})).collect::<Vec<_>>(),
+            "domaines": top(&par_domaine, 25),
+            "technique": {"n": technique_n.values().sum::<usize>(), "domaines": top(&technique_n, 5)},
             "groupes": groupes,
             "attendu": attendu,
-            "menaces": plus_frequents(e.bloques.iter().filter(|b| b.3 == "menaces").map(|b| (b.1.as_str(), b.2.as_str())), 30)
-                .into_iter().map(|((c, d), n)| json!({"ip": c, "nom": nom(c), "domaine": d, "n": n})).collect::<Vec<_>>(),
-            "pub_bloquee": plus_frequents(e.bloques.iter().filter(|b| b.3 == "pub").map(|b| b.1.as_str()), 10)
-                .into_iter().map(|(c, n)| json!({"ip": c, "nom": nom(c), "n": n})).collect::<Vec<_>>(),
+            "menaces": menaces.iter().take(30).map(|&((c, d), n)| json!({"ip": c, "nom": nom(c), "domaine": d, "n": n})).collect::<Vec<_>>(),
+            "pub_bloquee": pubs.iter().take(10).map(|&(c, n)| json!({"ip": c, "nom": nom(c), "n": n})).collect::<Vec<_>>(),
             "nouveaux_domaines": nouveaux.iter().take(50).collect::<Vec<_>>(),
+            "nouveaux_groupes": ng.iter().take(12).map(|(d, (n, ts))| json!({"domaine": d, "n": n, "dernier": ts})).collect::<Vec<_>>(),
+            "par_heure": {"requetes": req_h, "bloques": blo_h},
+            "bloques_24h": {"pub": n_pub, "menaces": n_men},
         },
         "sans_dns": sans_dns.iter().take(30).map(|((c, d), ts)| json!({"ip": c, "nom": nom(c), "vers": d, "vu": ts})).collect::<Vec<_>>(),
     })
@@ -835,6 +975,11 @@ fn repondre(s: &mut TcpStream, statut: &str, type_: &str, corps: &[u8]) {
         corps.len()
     );
     let _ = s.write_all(entete.as_bytes()).and_then(|_| s.write_all(corps));
+}
+
+/// Valeur du paramètre `cle` dans la requête d'un chemin (`/x?a=1&b=2`).
+fn param<'a>(chemin: &'a str, cle: &str) -> Option<&'a str> {
+    chemin.split_once('?')?.1.split('&').find_map(|kv| kv.strip_prefix(cle)?.strip_prefix('='))
 }
 
 fn servir(mut s: TcpStream) {
@@ -854,9 +999,14 @@ fn servir(mut s: TcpStream) {
     let mut mots = requete.split_whitespace();
     match (mots.next(), mots.next()) {
         (Some("GET"), Some("/api/etat")) => repondre(&mut s, "200 OK", "application/json", etat().to_string().as_bytes()),
+        (Some("GET"), Some(chemin)) if chemin.starts_with("/api/historique?") => {
+            match param(chemin, "p").and_then(historique) {
+                Some(h) => repondre(&mut s, "200 OK", "application/json", h.to_string().as_bytes()),
+                None => repondre(&mut s, "400 Bad Request", "text/plain", b"periode invalide (1h, 24h ou 30j)"),
+            }
+        }
         (Some("GET"), Some(chemin)) if chemin.starts_with("/api/appareil?") => {
-            let ip = chemin.split_once('?').and_then(|(_, q)| q.split('&').find_map(|kv| kv.strip_prefix("ip=")));
-            match ip.filter(|ip| ip.parse::<Ipv4Addr>().is_ok()) {
+            match param(chemin, "ip").filter(|ip| ip.parse::<Ipv4Addr>().is_ok()) {
                 Some(ip) => repondre(&mut s, "200 OK", "application/json", fiche(ip).to_string().as_bytes()),
                 None => repondre(&mut s, "400 Bad Request", "text/plain", b"ip invalide"),
             }
@@ -1013,5 +1163,37 @@ mod tests {
         let dans = |ip: &str| blocs.iter().any(|&(r, m)| ip_u32(ip).unwrap() & m == r);
         assert!(dans("10.255.255.254") && dans("172.31.0.1") && dans("192.168.200.3") && !dans("172.32.0.1") && !dans("192.169.0.1") && !dans("11.0.0.1"));
         assert_eq!(cidr("172.16.0.0/12"), Some((0xac10_0000, 0xfff0_0000)));
+    }
+
+    #[test]
+    fn series() {
+        assert_eq!(moyenne(&[(2.0, 4.0), (4.0, 8.0)]), (3.0, 6.0));
+        assert_eq!(moyenne(&[]), (0.0, 0.0));
+        let mut q = VecDeque::new();
+        for i in 0..800 {
+            pousser(&mut q, i, PTS_5S);
+        }
+        assert_eq!((q.len(), q[0]), (720, 80));
+        let t = 100_000.0;
+        assert_eq!(tranche(t, t), Some(23));
+        assert_eq!(tranche(t, t - 3599.0), Some(23));
+        assert_eq!(tranche(t, t - 3600.0), Some(22));
+        assert_eq!(tranche(t, t - 24.0 * 3600.0 + 1.0), Some(0));
+        assert_eq!(tranche(t, t - 24.0 * 3600.0), None);
+        let mut m = HashMap::new();
+        m.extend([("b.example", 2), ("a.example", 2), ("c.example", 9)]);
+        assert_eq!(top(&m, 2), vec![("c.example", 9), ("a.example", 2)]);
+        assert_eq!(param("/api/historique?p=1h", "p"), Some("1h"));
+        assert_eq!(param("/api/appareil?x=1&ip=192.0.2.5", "ip"), Some("192.0.2.5"));
+        assert_eq!(param("/api/historique?pp=1h", "p"), None);
+    }
+
+    #[test]
+    fn historique_periodes() {
+        assert!(historique("2h").is_none() && historique("").is_none() && historique("1h&x").is_none());
+        let h = historique("24h").expect("24h");
+        assert_eq!((h["pas"].as_u64(), h["unite"].as_str()), (Some(60), Some("o/s")));
+        assert!(historique("1h").is_some_and(|h| h["latences"].is_array()));
+        assert!(historique("30j").is_some_and(|h| h["pas"] == 86400 && h["unite"] == "o" && h.get("latences").is_none()));
     }
 }
