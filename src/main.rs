@@ -22,6 +22,7 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const FENETRE: f64 = 24.0 * 3600.0;
+const MAX_DOMAINES_VUS: usize = 20_000;
 const PAGE_INTEGREE: &str = include_str!("../index.html");
 
 struct Config {
@@ -98,6 +99,34 @@ fn principal(d: &str) -> &str {
     &d[d.len() - garde..]
 }
 
+/// Trafic « de plomberie » (reverse DNS, mDNS, WPAD, nom court…) : compté mais jamais classé ni signalé comme nouveau.
+fn technique(d: &str) -> bool {
+    let d = d.trim_end_matches('.');
+    let fin = |suf: &str| d.len() >= suf.len() && d[d.len() - suf.len()..].eq_ignore_ascii_case(suf);
+    d.is_empty() || !d.contains('.') || fin(".arpa") || fin(".local")
+        || d.split('.').any(|l| l.starts_with('_')) || d.split('.').next().is_some_and(|l| l.eq_ignore_ascii_case("wpad"))
+}
+
+/// Un appareil est « nouveau » s'il est apparu après la première heure de la vigie (sinon tout l'est au premier démarrage) et il y a moins de 7 jours.
+fn est_nouveau(premier: f64, plus_ancien: f64, t: f64) -> bool {
+    premier > plus_ancien + 3600.0 && t - premier < 7.0 * 86400.0
+}
+
+/// Adresse du routeur lui-même (boucle locale ou une de ses interfaces).
+fn est_routeur(ip: &str, propres: &[(String, u32, u32, String)]) -> bool {
+    ip.parse::<Ipv4Addr>().is_ok_and(|a| a.is_loopback()) || propres.iter().any(|p| p.3 == ip)
+}
+
+/// Au-delà de `max` entrées, retire la moitié la plus ancienne.
+fn plafonner(m: &mut HashMap<String, f64>, max: usize) {
+    if m.len() > max {
+        let mut ts: Vec<f64> = m.values().copied().collect();
+        let milieu = ts.len() / 2;
+        let (_, &mut med, _) = ts.select_nth_unstable_by(milieu, f64::total_cmp);
+        m.retain(|_, &mut v| v >= med);
+    }
+}
+
 /// `nom,début,fin` (nom facultatif) → plage DHCP.
 fn plage(s: &str) -> Option<(String, u32, u32)> {
     let mut p = s.split(',');
@@ -128,6 +157,16 @@ struct Etat {
     appareils: HashMap<String, Appareil>,              // mac -> appareil
     latences: Vec<(String, String, Option<f64>)>,      // (nom, cible, ms)
     services: Vec<(String, String)>,                   // (unité, is-active)
+    vnstat: Option<Vnstat>,                            // cache rafraîchi chaque minute
+    adresses: Vec<(String, u32, u32, String)>,         // cache de `ip addr` : (interface, réseau, masque, adresse)
+}
+
+/// Totaux vnstat du WAN : (rx, tx) du jour, du mois, et des 30 derniers jours (le plus ancien d'abord).
+struct Vnstat {
+    jour: (u64, u64),
+    mois: (u64, u64),
+    #[allow(dead_code)] // servi par /api/historique?p=30j (étape suivante)
+    jours: Vec<(u64, u64)>,
 }
 
 static ETAT: LazyLock<Mutex<Etat>> = LazyLock::new(Default::default);
@@ -174,7 +213,8 @@ fn public(ip: &str) -> bool {
 fn charger_etat() {
     let mut e = verrou();
     if let Some(d) = lire_json::<HashMap<String, f64>>(&format!("{}/domaines.json", cfg().etat)) {
-        e.domaines_vus.extend(d);
+        e.domaines_vus.extend(d.into_iter().filter(|(k, _)| !technique(k)));
+        plafonner(&mut e.domaines_vus, MAX_DOMAINES_VUS);
     }
     if let Some(a) = lire_json::<HashMap<String, Appareil>>(&format!("{}/appareils.json", cfg().etat)) {
         e.appareils.extend(a);
@@ -273,7 +313,9 @@ fn lire_journal_dns(mut position: u64) -> u64 {
                     if e.requetes.len() > 150_000 {
                         e.requetes.pop_front();
                     }
-                    e.domaines_vus.entry(domaine.into()).or_insert(t);
+                    if !technique(domaine) {
+                        e.domaines_vus.entry(domaine.into()).or_insert(t);
+                    }
                 }
                 Some(Evenement::Bloque { client, liste, domaine }) => {
                     e.bloques.push_back((t, client.into(), domaine.into(), liste));
@@ -287,6 +329,7 @@ fn lire_journal_dns(mut position: u64) -> u64 {
                 None => {}
             }
         }
+        plafonner(&mut e.domaines_vus, MAX_DOMAINES_VUS);
         if e.ip_vers_nom.len() > 200_000 {
             e.ip_vers_nom.clear();
         }
@@ -501,10 +544,12 @@ fn sondes() {
         let services = cfg().services.iter().enumerate()
             .map(|(i, s)| (s.clone(), etats.get(i).cloned().unwrap_or_else(|| "inconnu".into())))
             .collect();
+        let adresses = adresses_interfaces();
         {
             let mut e = verrou();
             e.latences = latences;
             e.services = services;
+            e.adresses = adresses;
         }
         thread::sleep(Duration::from_secs(30));
     }
@@ -523,16 +568,27 @@ fn lien(nom: &str, rx: f64, tx: f64) -> Value {
 }
 
 // --- état publié ---
-fn vnstat_wan() -> Value {
-    let mut enfant = match Command::new("vnstat")
+/// `vnstat --json dm` → totaux du jour et du mois, et les 30 derniers jours.
+fn analyser_vnstat(brut: &[u8]) -> Option<Vnstat> {
+    let d: Value = serde_json::from_slice(brut).ok()?;
+    let tr = d.pointer("/interfaces/0/traffic")?;
+    let paire = |v: &Value| Some((v["rx"].as_u64()?, v["tx"].as_u64()?));
+    let jours: Vec<(u64, u64)> = tr["day"].as_array()?.iter().filter_map(paire).collect();
+    Some(Vnstat {
+        jour: *jours.last()?,
+        mois: paire(tr["month"].as_array()?.last()?)?,
+        jours: jours[jours.len().saturating_sub(30)..].to_vec(),
+    })
+}
+
+/// Interroge vnstat (≤ 5 s) ; appelé seulement par `suivre_vnstat`, jamais par une requête HTTP.
+fn vnstat_wan() -> Option<Vnstat> {
+    let mut enfant = Command::new("vnstat")
         .args(["--json", "dm", "-i", &cfg().wan])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
-    {
-        Ok(e) => e,
-        Err(_) => return Value::Null,
-    };
+        .ok()?;
     let mut sortie = enfant.stdout.take().expect("stdout demandé");
     let lecteur = thread::spawn(move || {
         let mut v = Vec::new();
@@ -548,14 +604,16 @@ fn vnstat_wan() -> Value {
         }
         thread::sleep(Duration::from_millis(20));
     }
-    let brut = lecteur.join().unwrap_or_default();
-    (|| {
-        let d: Value = serde_json::from_slice(&brut).ok()?;
-        let tr = d.pointer("/interfaces/0/traffic")?;
-        let (jour, mois) = (tr["day"].as_array()?.last()?, tr["month"].as_array()?.last()?);
-        Some(json!({"jour": {"rx": jour["rx"], "tx": jour["tx"]}, "mois": {"rx": mois["rx"], "tx": mois["tx"]}}))
-    })()
-    .unwrap_or(Value::Null)
+    analyser_vnstat(&lecteur.join().unwrap_or_default())
+}
+
+/// Une fois par minute : le cache lu par /api/etat.
+fn suivre_vnstat() {
+    loop {
+        let v = vnstat_wan();
+        verrou().vnstat = v;
+        thread::sleep(Duration::from_secs(60));
+    }
 }
 
 fn compter_lignes(nom: &str) -> usize {
@@ -624,7 +682,7 @@ fn plus_frequents<K: Hash + Eq + Copy>(cles: impl Iterator<Item = K>, n: usize) 
 /// Requêtes → (trafic attendu, domaines groupés par domaine principal), en JSON.
 fn repartir<'a>(domaines: impl Iterator<Item = &'a str>) -> (Value, Value) {
     let mut par_domaine: HashMap<&str, usize> = HashMap::new();
-    for d in domaines {
+    for d in domaines.filter(|d| !technique(d)) {
         *par_domaine.entry(d).or_default() += 1;
     }
     let (mut connus, mut groupes): (Vec<(&str, usize)>, HashMap<&str, (usize, Vec<(&str, usize)>)>) = Default::default();
@@ -657,7 +715,8 @@ fn repartir<'a>(domaines: impl Iterator<Item = &'a str>) -> (Value, Value) {
 fn fiche(ip: &str) -> Value {
     let e = verrou();
     let nom = e.appareils.values().find(|a| a.ip.as_deref() == Some(ip)).and_then(|a| a.nom.clone())
-        .or_else(|| cfg().noms.get(ip).cloned());
+        .or_else(|| cfg().noms.get(ip).cloned())
+        .or_else(|| est_routeur(ip, &e.adresses).then(|| "routeur".into()));
     let requetes: Vec<&str> = e.requetes.iter().filter(|r| r.1 == ip).map(|r| r.2.as_str()).collect();
     let (attendu, groupes) = repartir(requetes.iter().copied());
     let bloques: Vec<_> = e.bloques.iter().filter(|b| b.1 == ip).collect();
@@ -673,10 +732,13 @@ fn fiche(ip: &str) -> Value {
 
 fn etat() -> Value {
     let t = maintenant();
-    let (systeme, historique_wan) = (systeme(), vnstat_wan());
+    let systeme = systeme();
     let arp: Vec<_> = analyser_arp(&fs::read_to_string("/proc/net/arp").unwrap_or_default())
         .into_iter().filter(|v| local(&v.0)).collect();
-    let (baux, adresses) = (baux_actuels(), adresses_interfaces());
+    let (baux, adresses, historique_wan) = {
+        let e = verrou();
+        (baux_actuels(), e.adresses.clone(), e.vnstat.as_ref().map(|v| json!({"jour": {"rx": v.jour.0, "tx": v.jour.1}, "mois": {"rx": v.mois.0, "tx": v.mois.1}})))
+    };
     let en_ligne = |mac: &str| arp.iter().any(|v| v.1 == mac);
     let ip_fixes: Vec<_> = arp.iter().filter(|v| !baux.iter().any(|b| b.0 == v.1)).collect();
     let dans = |ip: &str, r: u32, m: u32| ip_u32(ip).is_some_and(|a| a & m == r);
@@ -700,9 +762,11 @@ fn etat() -> Value {
     let e = &*guard;
     let noms: HashMap<&str, Option<&str>> =
         e.appareils.values().filter_map(|a| Some((a.ip.as_deref()?, a.nom.as_deref()))).collect();
-    let nom = |ip: &str| noms.get(ip).copied().flatten().or_else(|| cfg().noms.get(ip).map(String::as_str));
+    let nom = |ip: &str| noms.get(ip).copied().flatten().or_else(|| cfg().noms.get(ip).map(String::as_str))
+        .or_else(|| est_routeur(ip, &adresses).then_some("routeur"));
+    let plus_ancien = e.appareils.values().map(|a| a.premier).fold(f64::INFINITY, f64::min);
 
-    let mut appareils: Vec<_> = e.appareils.iter().map(|(m, a)| (m, a, t - a.premier < 7.0 * 86400.0)).collect();
+    let mut appareils: Vec<_> = e.appareils.iter().map(|(m, a)| (m, a, est_nouveau(a.premier, plus_ancien, t))).collect();
     appareils.sort_by(|a, b| (!a.2, a.1.ip.as_deref().unwrap_or("")).cmp(&(!b.2, b.1.ip.as_deref().unwrap_or(""))));
     let mut conso: Vec<_> = e.debits_appareils.iter().collect();
     conso.sort_by(|a, b| b.1.total_cmp(a.1));
@@ -735,7 +799,11 @@ fn etat() -> Value {
             "requetes_24h": e.requetes.len(),
             "clients": plus_frequents(e.requetes.iter().map(|r| r.1.as_str()), 15).into_iter()
                 .map(|(c, n)| json!({"ip": c, "nom": nom(c), "n": n})).collect::<Vec<_>>(),
-            "domaines": plus_frequents(e.requetes.iter().map(|r| r.2.as_str()), 25),
+            "domaines": plus_frequents(e.requetes.iter().map(|r| r.2.as_str()).filter(|d| !technique(d)), 25),
+            "technique": json!({
+                "n": e.requetes.iter().filter(|r| technique(&r.2)).count(),
+                "domaines": plus_frequents(e.requetes.iter().map(|r| r.2.as_str()).filter(|d| technique(d)), 5),
+            }),
             "groupes": groupes,
             "attendu": attendu,
             "menaces": plus_frequents(e.bloques.iter().filter(|b| b.3 == "menaces").map(|b| (b.1.as_str(), b.2.as_str())), 30)
@@ -802,6 +870,7 @@ fn main() {
     charger_etat();
     thread::spawn(boucle);
     thread::spawn(sondes);
+    thread::spawn(suivre_vnstat);
     let ecoute = TcpListener::bind(&c.ecoute).unwrap_or_else(|e| panic!("écoute sur {} impossible : {e}", c.ecoute));
     for flux in ecoute.incoming().flatten() {
         thread::spawn(move || servir(flux));
@@ -882,5 +951,40 @@ mod tests {
     fn frequents() {
         let v = plus_frequents(["a", "b", "b", "c", "c", "d"].into_iter(), 3);
         assert_eq!(v, vec![("b", 2), ("c", 2), ("a", 1)]);
+    }
+
+    #[test]
+    fn nettoyage() {
+        for d in ["", ".", "4.3.2.192.in-addr.arpa", "x.IP6.ARPA", "imprimante", "tele.local", "_dns-sd._udp.example", "a._tcp.example", "wpad.example", "wpad"] {
+            assert!(technique(d), "{d}");
+        }
+        for d in ["exemple.fr", "a.b.example", "wpadx.example", "arpa.example", "local.example"] {
+            assert!(!technique(d), "{d}");
+        }
+        let (debut, t) = (1_000_000.0, 1_000_000.0 + 10.0 * 86400.0);
+        assert!(!est_nouveau(debut, debut, t), "premier démarrage");
+        assert!(!est_nouveau(debut + 3600.0, debut, t), "dans la première heure");
+        assert!(est_nouveau(t - 86400.0, debut, t));
+        assert!(!est_nouveau(t - 8.0 * 86400.0, debut, t), "trop ancien");
+        let propres = vec![("lan".to_string(), 0, 0, "192.0.2.1".to_string())];
+        assert!(est_routeur("127.0.0.1", &propres) && est_routeur("127.3.2.1", &propres) && est_routeur("192.0.2.1", &propres));
+        assert!(!est_routeur("192.0.2.9", &propres));
+        let mut m: HashMap<String, f64> = (0..10).map(|i| (format!("d{i}.example"), i as f64)).collect();
+        plafonner(&mut m, 10);
+        assert_eq!(m.len(), 10);
+        plafonner(&mut m, 8);
+        assert_eq!(m.len(), 5);
+        assert!(m.contains_key("d9.example") && !m.contains_key("d0.example"));
+    }
+
+    #[test]
+    fn vnstat() {
+        let j = r#"{"interfaces":[{"traffic":{"day":[{"rx":1,"tx":2},{"rx":3,"tx":4}],"month":[{"rx":10,"tx":20}]}}]}"#;
+        let v = analyser_vnstat(j.as_bytes()).expect("vnstat");
+        assert_eq!((v.jour, v.mois, v.jours), ((3, 4), (10, 20), vec![(1, 2), (3, 4)]));
+        assert!(analyser_vnstat(b"pas du json").is_none());
+        let long: Vec<String> = (0..40).map(|i| format!(r#"{{"rx":{i},"tx":0}}"#)).collect();
+        let j = format!(r#"{{"interfaces":[{{"traffic":{{"day":[{}],"month":[{{"rx":0,"tx":0}}]}}}}]}}"#, long.join(","));
+        assert_eq!(analyser_vnstat(j.as_bytes()).map(|v| (v.jours.len(), v.jours[0].0)), Some((30, 10)));
     }
 }
