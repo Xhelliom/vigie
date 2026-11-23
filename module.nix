@@ -10,6 +10,20 @@ let
       ips = lib.filter (x: builtins.match "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+" x != null) p;
     in
     "${lib.removePrefix "set:" tag},${builtins.elemAt ips 0},${builtins.elemAt ips 1}";
+  # dhcp-host "mac,ip,nom[,bail]" ou host-record "nom,ip[,ttl]" -> { "ip" = "nom"; } (rien sans nom ni IP)
+  estIp = x: builtins.match "[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+" x != null;
+  pasUnNom = x: x == "" || estIp x
+    || builtins.match "([0-9]+[smhdw]?|infinite|ignore|(set|tag|id):.*|([0-9a-fA-F*]{1,2}[:-]){5}[0-9a-fA-F*]{1,2}|\\[.*)" x != null;
+  nomDnsmasq = h:
+    let
+      p = lib.splitString "," h;
+      ips = lib.filter estIp p;
+      noms = lib.filter (x: !pasUnNom x) p;
+    in
+    lib.optionalAttrs (ips != [ ] && noms != [ ]) { ${lib.head ips} = lib.head noms; };
+  reglages = config.services.dnsmasq.settings;
+  nomsAuto = lib.foldl' (acc: h: acc // nomDnsmasq h) { }
+    (lib.toList (reglages.dhcp-host or [ ]) ++ lib.toList (reglages.host-record or [ ]));
 in
 {
   options.services.vigie = {
@@ -38,6 +52,21 @@ in
       default = [ "dnsmasq" "unbound" "nftables" ];
       description = "Unités systemd dont l'état est affiché.";
     };
+    domainesConnus = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ "pool.ntp.org" "time.cloudflare.com" "time.google.com" "time.apple.com" "time.windows.com" "time.nist.gov" "ntp.ubuntu.com" ];
+      example = [ "pool.ntp.org" "cache.nixos.org" "github.com" "maison.example" ];
+      description = "Suffixes du trafic attendu (sous-domaines compris), mis à part du classement des domaines.";
+    };
+    noms = lib.mkOption {
+      type = lib.types.attrsOf lib.types.str;
+      default = { };
+      example = { "192.0.2.10" = "nas"; };
+      description = ''
+        Noms affichés par IP (sans espace), en plus de ceux déduits de services.dnsmasq.settings.dhcp-host
+        ("mac,ip,nom") et host-record ("nom,ip"). Servent quand le bail DHCP ne donne pas de nom.
+      '';
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -54,6 +83,8 @@ in
         VIGIE_DHCP = lib.concatStringsSep " " cfg.dhcp;
         VIGIE_SONDES = lib.concatStringsSep " " cfg.sondes;
         VIGIE_SERVICES = lib.concatStringsSep " " cfg.services;
+        VIGIE_DOMAINES_CONNUS = lib.concatStringsSep " " cfg.domainesConnus;
+        VIGIE_NOMS = lib.concatStringsSep " " (lib.mapAttrsToList (ip: nom: "${ip}=${nom}") (nomsAuto // cfg.noms));
       };
       serviceConfig = {
         ExecStart = "${self.packages.${pkgs.system}.default}/bin/vigie";

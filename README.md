@@ -35,8 +35,16 @@ services.vigie = {
   # ecoute = "0.0.0.0:8080";
   # listes = "/var/lib/listes";
   # reseaux = [ "192.168.1.0/24" ];
+  # Trafic attendu, mis à part du classement des domaines (défaut : domaines NTP courants)
+  # domainesConnus = [ "pool.ntp.org" "cache.nixos.org" "maison.example" ];
+  # Noms par IP, en plus de ceux déduits de dnsmasq (dhcp-host "mac,ip,nom", host-record "nom,ip")
+  # noms = { "192.0.2.10" = "nas"; };
 };
 ```
+
+La page est rangée en sections : état, sécurité, activité, réseau, système. Les domaines sont regroupés par
+domaine principal (dépliables), le trafic attendu est replié à part, et un clic sur un appareil ouvre sa fiche
+(domaines demandés et blocages sur 24 h, `GET /api/appareil?ip=…`).
 
 Le routeur doit aussi activer `services.vnstat` et dnsmasq avec `log-queries=extra`. Le service tourne en
 root (lecture de conntrack) mais confiné (`ProtectSystem=strict`, `MemoryMax=96M`).
@@ -55,6 +63,8 @@ root (lecture de conntrack) mais confiné (`ProtectSystem=strict`, `MemoryMax=96
 | `VIGIE_DHCP` | aucune (le module les déduit de `services.dnsmasq.settings.dhcp-range`) | plages DHCP `nom,début,fin`, séparées par des espaces |
 | `VIGIE_SONDES` | `1.1.1.1` | cibles de ping pour la latence Internet |
 | `VIGIE_SERVICES` | `dnsmasq unbound nftables` | unités systemd surveillées |
+| `VIGIE_DOMAINES_CONNUS` | domaines NTP courants (`pool.ntp.org`, `time.google.com`…) | suffixes du trafic attendu, séparés par des espaces |
+| `VIGIE_NOMS` | aucun (le module les déduit de dnsmasq) | noms de repli `ip=nom`, séparés par des espaces |
 | `STATE_DIRECTORY` | `/var/lib/vigie` | dossier d'état (fourni par systemd) |
 
 ## Licence

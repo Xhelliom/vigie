@@ -66,16 +66,19 @@
   #ligne-tx { fill:none; stroke:var(--doux); stroke-width:1.25; vector-effect:non-scaling-stroke; stroke-linejoin:round; opacity:.8; }
   #cumul { grid-column:1 / -1; margin:6px 0 0; font-size:13px; color:var(--doux); }
 
-  /* colonnes plutôt que grille : les panneaux de hauteurs différentes s'empilent sans trous */
-  main { columns:340px; column-gap:16px; }
-  main .pan { break-inside:avoid; margin-bottom:16px; }
-  h2 { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:0; font-size:16px; font-weight:650; letter-spacing:-.015em; }
-  h2 span { font-size:13px; font-weight:450; letter-spacing:0; color:var(--doux); }
+  /* Sections dans l'ordre de ce qui demande l'attention ; colonnes plutôt que grille : les panneaux s'empilent sans trous */
+  .bloc { margin-top:28px; }
+  .bloc:first-child { margin-top:0; }
+  .bloc > h2 { margin:0 0 12px 4px; font-size:13px; font-weight:650; letter-spacing:.08em; text-transform:uppercase; color:var(--doux); }
+  .cols { columns:340px; column-gap:16px; }
+  .cols .pan, .bloc > .pan { break-inside:avoid; margin-bottom:16px; }
+  .pan > h3 { display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin:0; font-size:16px; font-weight:650; letter-spacing:-.015em; }
+  .pan > h3 span { font-size:13px; font-weight:450; letter-spacing:0; color:var(--doux); text-align:right; }
   .pan > p { margin:2px 0 4px; font-size:13px; color:var(--doux); }
   ul { list-style:none; margin:8px 0 0; padding:0; }
   li { position:relative; display:flex; justify-content:space-between; align-items:baseline; gap:12px; padding:9px 0; }
   li + li { border-top:1px solid var(--filet); }
-  li .p { min-width:0; overflow-wrap:anywhere; }
+  li .p { flex:1; min-width:0; overflow-wrap:break-word; }
   li small { display:block; font-size:12.5px; color:var(--doux); overflow-wrap:normal; }
   li small span + span { margin-left:10px; }
   li .v { white-space:nowrap; font-weight:500; }
@@ -84,10 +87,39 @@
   .menace { color:var(--alerte); font-weight:600; }
   .tag { padding:2px 9px; border-radius:999px; font-size:12px; font-weight:600; color:var(--texte); background:color-mix(in srgb, var(--feu) 20%, var(--surface)); }
 
-  /* Infrastructure : santé du routeur puis une carte par réseau local */
-  .infra { margin-bottom:16px; }
   section, #sante, #reseaux { scroll-margin-top:96px; }
-  .sante { display:flex; flex-wrap:wrap; gap:8px 24px; margin:12px 0 16px; }
+  /* Santé du routeur : une ligne sous le débit */
+  .sante { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:8px 24px; margin:4px 0 0; padding-top:12px; border-top:1px solid var(--filet); }
+  .reseaux { margin-top:12px; }
+
+  /* Un nom d'appareil se clique : sa fiche s'ouvre */
+  .qui { font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer; text-align:left;
+    text-decoration:underline dotted color-mix(in srgb, var(--doux) 70%, transparent); text-underline-offset:3px; }
+  .qui:hover { text-decoration-color:var(--mer); }
+  .nb { font-size:12.5px; color:var(--doux); margin-left:6px; }
+  details > summary { cursor:pointer; list-style:none; }
+  details > summary::-webkit-details-marker { display:none; }
+  details > summary::before { content:"▸"; display:inline-block; width:1em; color:var(--doux); transition:transform .15s; }
+  details[open] > summary::before { transform:rotate(90deg); }
+  ul.sous { margin:4px 0 0 1em; }
+  ul.sous li { padding:5px 0; font-size:13.5px; }
+  .attendu { margin-top:6px; padding-top:8px; border-top:1px solid var(--filet); font-size:13.5px; }
+  .attendu > summary { color:var(--doux); }
+
+  /* Fiche d'un appareil */
+  dialog { width:min(560px, calc(100vw - 32px)); max-height:min(82vh, 760px); padding:0; border:1px solid var(--bord); border-radius:18px; color:var(--texte);
+    background:var(--reflet), color-mix(in srgb, var(--surface) 90%, transparent);
+    backdrop-filter:blur(26px) saturate(170%); -webkit-backdrop-filter:blur(26px) saturate(170%);
+    box-shadow:inset 0 1px 0 var(--haut), 0 30px 60px -20px rgba(0,0,0,.45); }
+  dialog::backdrop { background:rgba(10,20,20,.3); backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px); }
+  .fiche { padding:18px 20px 12px; }
+  .fiche-tete { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+  .fiche-tete h3 { margin:0; font-size:19px; font-weight:680; letter-spacing:-.02em; overflow-wrap:anywhere; }
+  .fiche-tete p { margin:2px 0 0; font-size:13px; color:var(--doux); }
+  .fermer { font:inherit; font-size:22px; line-height:1; padding:2px 9px; border:0; border-radius:8px; background:none; color:var(--doux); cursor:pointer; }
+  .fermer:hover { color:var(--texte); background:var(--filet); }
+  .fiche h4 { margin:18px 0 0; font-size:14px; font-weight:650; }
+  .fiche .chiffres { flex-wrap:wrap; }
   .indic { display:flex; align-items:center; gap:8px; }
   .indic span { color:var(--doux); }
   .pt { display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--doux); flex:none; }
@@ -104,8 +136,6 @@
   .jauge i { display:block; height:100%; width:calc(var(--f) * 100%); background:var(--mer); border-radius:3px; }
   .jauge.pleine i { background:var(--feu); }
 
-  footer { padding:0 clamp(16px,4vw,40px) 32px; font-size:13px; color:var(--doux); }
-  footer p { margin:0 0 2px; }
 
   body.perime .contenu { filter:grayscale(1); opacity:.5; transition:opacity .3s, filter .3s; }
 
@@ -115,7 +145,7 @@
     .trace { height:130px; }
     .phare small { display:none; }
   }
-  @media (prefers-reduced-motion: reduce) { .phare.attention i::after { animation:none; } .puce { transition:none; } }
+  @media (prefers-reduced-motion: reduce) { .phare.attention i::after { animation:none; } .puce, details > summary::before { transition:none; } }
   @media (prefers-reduced-transparency: reduce) { header { background:var(--fond); backdrop-filter:none; -webkit-backdrop-filter:none; } }
   /* Variante glossy : verre sur fond coloré, reflets en haut des surfaces */
   :root { --verre:rgba(255,255,255,.46); --bord:rgba(255,255,255,.8); --haut:rgba(255,255,255,.95);
@@ -162,7 +192,7 @@
   @media (prefers-reduced-motion: reduce) { .halos i { animation:none; } }
   @media (prefers-reduced-transparency: reduce) {
     .halos { display:none; }
-    .pan, .puce, .tag { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--surface); }
+    .pan, .puce, .tag, dialog { backdrop-filter:none; -webkit-backdrop-filter:none; background:var(--surface); }
   }
 </style>
 </head>
@@ -175,44 +205,72 @@
 <nav id="points" aria-label="Points à regarder"></nav>
 
 <div class="contenu">
-  <section class="pan hero" aria-label="Internet">
-    <div class="debits">
-      <div class="debit"><span>Réception</span><b id="rx">–</b></div>
-      <div class="debit tx"><span>Émission</span><b id="tx">–</b></div>
+  <section class="bloc" aria-labelledby="t-etat">
+    <h2 id="t-etat">État</h2>
+    <div class="pan hero">
+      <div class="debits">
+        <div class="debit"><span>Réception</span><b id="rx">–</b></div>
+        <div class="debit tx"><span>Émission</span><b id="tx">–</b></div>
+      </div>
+      <figure class="trace" style="margin:0">
+        <figcaption id="legende">5 dernières minutes</figcaption>
+        <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
+          <defs><linearGradient id="degrade" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" style="stop-color:var(--mer);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--mer);stop-opacity:0"/>
+          </linearGradient></defs>
+          <path id="base" d="M0,150L600,150"/><path id="aire" fill="url(#degrade)"/><path id="ligne-rx"/><path id="ligne-tx"/>
+        </svg>
+      </figure>
+      <p id="cumul"></p>
+      <div class="sante" id="sante"></div>
     </div>
-    <figure class="trace" style="margin:0">
-      <figcaption id="legende">5 dernières minutes</figcaption>
-      <svg viewBox="0 0 600 150" preserveAspectRatio="none" aria-hidden="true">
-        <defs><linearGradient id="degrade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" style="stop-color:var(--mer);stop-opacity:.28"/><stop offset="1" style="stop-color:var(--mer);stop-opacity:0"/>
-        </linearGradient></defs>
-        <path id="base" d="M0,150L600,150"/><path id="aire" fill="url(#degrade)"/><path id="ligne-rx"/><path id="ligne-tx"/>
-      </svg>
-    </figure>
-    <p id="cumul"></p>
   </section>
 
-  <section class="pan infra" aria-label="Infrastructure">
-    <h2>Infrastructure <span id="lien-wan"></span></h2>
-    <div class="sante" id="sante"></div>
-    <div class="reseaux" id="reseaux"></div>
+  <section class="bloc" aria-labelledby="t-securite">
+    <h2 id="t-securite">Sécurité</h2>
+    <div class="cols">
+      <section class="pan" id="s-menaces"><h3>Domaines malveillants bloqués <span>24 h</span></h3><ul id="menaces"></ul></section>
+      <section class="pan" id="s-nouveaux"><h3>Nouveaux appareils <span>7 jours</span></h3><ul id="nouveaux-app"></ul></section>
+      <section class="pan"><h3>Connexions sans DNS <span>24 h</span></h3><p>Vers une IP jamais annoncée par le DNS : souvent normal (applis, jeux), à surveiller pour les objets connectés.</p><ul id="sansdns"></ul></section>
+    </div>
   </section>
 
-  <main>
-    <section class="pan" id="s-menaces"><h2>Domaines malveillants bloqués <span>24 h</span></h2><ul id="menaces"></ul></section>
-    <section class="pan" id="s-appareils"><h2>Appareils <span id="n-appareils"></span></h2><p>Point vert : présent sur le réseau en ce moment. « Nouveau » : vu pour la première fois il y a moins de 7 jours.</p><ul id="appareils"></ul></section>
-    <section class="pan" id="s-fixes"><h2>Adresses fixes <span id="n-fixes"></span></h2><p>Présentes sur le réseau sans bail DHCP : l'adresse est réglée à la main sur l'appareil.</p><ul id="fixes"></ul></section>
-    <section class="pan"><h2>Connexions sans DNS <span>24 h</span></h2><p>Vers une IP jamais annoncée par le DNS : souvent normal (applis, jeux), à surveiller pour les objets connectés.</p><ul id="sansdns"></ul></section>
-    <section class="pan"><h2>Gros consommateurs <span>maintenant</span></h2><ul id="conso"></ul></section>
-    <section class="pan"><h2>Pubs bloquées <span>24 h</span></h2><ul id="pub"></ul></section>
-    <section class="pan"><h2>Qui interroge le DNS <span id="total-dns"></span></h2><ul id="clients"></ul></section>
-    <section class="pan"><h2>Domaines les plus demandés <span>24 h</span></h2><ul id="domaines"></ul></section>
-    <section class="pan"><h2>Nouveaux domaines <span>24 h</span></h2><ul id="nouveaux"></ul></section>
-    <section class="pan"><h2>Liens</h2><ul id="interfaces"></ul></section>
-  </main>
+  <section class="bloc" aria-labelledby="t-activite">
+    <h2 id="t-activite">Activité</h2>
+    <div class="cols">
+      <section class="pan"><h3>Gros consommateurs <span>maintenant</span></h3><ul id="conso"></ul></section>
+      <section class="pan"><h3>Qui interroge le DNS <span id="total-dns"></span></h3><p>Un nom se clique : ses domaines et ce qui a été bloqué pour lui.</p><ul id="clients"></ul></section>
+      <section class="pan"><h3>Domaines les plus demandés <span>24 h</span></h3><p>Regroupés par domaine principal.</p><ul id="domaines"></ul>
+        <details class="attendu"><summary>Trafic attendu <span class="nb" id="n-attendu"></span></summary><ul id="attendu"></ul></details></section>
+      <section class="pan"><h3>Pubs bloquées <span>24 h</span></h3><ul id="pub"></ul></section>
+      <section class="pan"><h3>Nouveaux domaines <span>24 h</span></h3><ul id="nouveaux"></ul></section>
+    </div>
+  </section>
+
+  <section class="bloc" aria-labelledby="t-reseau">
+    <h2 id="t-reseau">Réseau</h2>
+    <div class="pan"><h3>Réseaux <span id="lien-wan"></span></h3><div class="reseaux" id="reseaux"></div></div>
+    <div class="cols">
+      <section class="pan" id="s-appareils"><h3>Appareils <span id="n-appareils"></span></h3><p>Point vert : présent sur le réseau en ce moment.</p><ul id="appareils"></ul></section>
+      <section class="pan" id="s-fixes"><h3>Adresses fixes <span id="n-fixes"></span></h3><p>Présentes sur le réseau sans bail DHCP : l'adresse est réglée à la main sur l'appareil.</p><ul id="fixes"></ul></section>
+      <section class="pan"><h3>Liens</h3><ul id="interfaces"></ul></section>
+    </div>
+  </section>
+
+  <section class="bloc" aria-labelledby="t-systeme">
+    <h2 id="t-systeme">Système</h2>
+    <div class="pan"><p id="sys"></p><p id="listes"></p></div>
+  </section>
 </div>
 
-<footer><p id="sys"></p><p id="listes"></p></footer>
+<dialog id="fiche" aria-labelledby="f-nom">
+  <div class="fiche">
+    <div class="fiche-tete"><div><h3 id="f-nom"></h3><p id="f-ip"></p></div><form method="dialog"><button class="fermer" aria-label="Fermer">×</button></form></div>
+    <div class="chiffres" id="f-chiffres"></div>
+    <h4>Domaines demandés <span class="nb">24 h</span></h4><ul id="f-domaines"></ul>
+    <h4>Bloqués pour cet appareil <span class="nb">24 h</span></h4><ul id="f-bloques"></ul>
+  </div>
+</dialog>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -224,12 +282,48 @@ const bp = n => n == null ? ["–", ""] : n*8 < 1e6 ? [fr(n*8/1e3), "kb/s"] : [f
 const b = n => bp(n).join(" ");
 const heure = t => new Date(t*1000).toLocaleTimeString("fr-FR");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const qui = x => esc(x.nom || x.ip);
+// Coupure des longs domaines aux points plutôt qu'au milieu d'un mot
+const dom = d => esc(d).replaceAll(".", ".<wbr>");
+// Un appareil se clique pour ouvrir sa fiche
+const qui = x => x.ip ? `<button type="button" class="qui" data-ip="${esc(x.ip)}">${esc(x.nom || x.ip)}</button>` : esc(x.nom || "");
+const date = t => new Date(t*1000).toLocaleDateString("fr-FR", {day:"numeric", month:"short"});
 // r = {a: texte principal, sous: ligne secondaire, v: valeur à droite, f: part 0..1 pour la barre}
 const liste = (id, rows, vide="Rien à signaler") => $(id).innerHTML = rows.length
   ? rows.map(r => `<li${r.f != null ? ` class="barre" style="--f:${r.f.toFixed(3)}"` : ""}><div class="p">${r.a}${r.sous ? `<small>${r.sous}</small>` : ""}</div><span class="v">${r.v ?? ""}</span></li>`).join("")
   : `<li class="vide">${vide}</li>`;
 const part = (xs, cle) => { const m = Math.max(1, ...xs.map(cle)); return x => cle(x) / m; };
+// Groupes de domaines dépliables ; on garde ceux ouverts d'un rafraîchissement à l'autre
+const ouverts = new Set();
+document.addEventListener("toggle", ev => { const g = ev.target.dataset?.g; if (g) ev.target.open ? ouverts.add(g) : ouverts.delete(g); }, true);
+function groupes(id, gs, vide) {
+  const f = part(gs, g => g.n);
+  liste(id, gs.map(g => {
+    const cle = id + ":" + g.domaine, reste = g.nb_sous - g.sous.length;
+    const a = g.nb_sous === 1 ? dom(g.sous[0][0])
+      : `<details data-g="${esc(cle)}"${ouverts.has(cle) ? " open" : ""}><summary>${dom(g.domaine)}<span class="nb">${pl(g.nb_sous, "sous-domaine", "sous-domaines")}</span></summary>`
+        + `<ul class="sous">${g.sous.map(([d, n]) => `<li><div class="p">${dom(d)}</div><span class="v">${fr(n)}</span></li>`).join("")}`
+        + `${reste > 0 ? `<li class="vide">et ${pl(reste, "autre", "autres")}</li>` : ""}</ul></details>`;
+    return {a, v: pl(g.n, "requête", "requêtes"), f: f(g)};
+  }), vide);
+}
+async function fiche(ip) {
+  try {
+    const f = await (await fetch("api/appareil?ip=" + encodeURIComponent(ip))).json();
+    $("f-nom").textContent = f.nom || f.ip;
+    $("f-ip").textContent = f.nom ? f.ip : "";
+    $("f-chiffres").innerHTML = [[f.requetes_24h, "requête", "requêtes"], [f.pub, "pub bloquée", "pubs bloquées"], [f.menaces, "menace", "menaces"], [f.attendu.n, "attendue", "attendues"]]
+      .map(([n, un, plus]) => `<div><b>${fr(n)}</b><span>${n > 1 ? plus : un}</span></div>`).join("");
+    groupes("f-domaines", f.groupes, "Aucune requête");
+    liste("f-bloques", f.bloques.map(x => ({a: x.liste === "menaces" ? `<span class="menace">${dom(x.domaine)}</span>` : dom(x.domaine),
+      sous: x.liste === "menaces" ? "domaine malveillant" : "publicité", v: pl(x.n, "fois", "fois")})), "Rien de bloqué");
+    if (!$("fiche").open) $("fiche").showModal();
+  } catch (err) { /* vigie injoignable : l'en-tête le signale déjà */ }
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("button.qui");
+  if (b) fiche(b.dataset.ip);
+  else if (ev.target === $("fiche")) $("fiche").close(); // clic sur le fond
+});
 
 const hist = [], N = 60; // 60 × 5 s = 5 min
 function tracer() {
@@ -249,7 +343,7 @@ async function maj() {
 
     const menaces = e.dns.menaces, nouveaux = e.appareils.filter(x => x.nouveau), points = [];
     if (menaces.length) points.push(`<a class="puce" href="#s-menaces">${pl(new Set(menaces.map(x => x.ip)).size, "appareil a", "appareils ont")} contacté ${pl(new Set(menaces.map(x => x.domaine)).size, "domaine malveillant", "domaines malveillants")}</a>`);
-    if (nouveaux.length) points.push(`<a class="puce" href="#s-appareils">${pl(nouveaux.length, "nouvel appareil", "nouveaux appareils")} cette semaine</a>`);
+    if (nouveaux.length) points.push(`<a class="puce" href="#s-nouveaux">${pl(nouveaux.length, "nouvel appareil", "nouveaux appareils")} cette semaine</a>`);
     const sante = e.sante;
     const enPanne = sante.services.filter(x => x.etat !== "active");
     if (enPanne.length) points.push(`<a class="puce" href="#sante">${enPanne.map(x => esc(x.nom)).join(", ")} ${enPanne.length > 1 ? "ne tournent pas" : "ne tourne pas"}</a>`);
@@ -288,13 +382,19 @@ async function maj() {
       </div>`;
     }).join("");
 
-    liste("menaces", menaces.map(x => ({a: `<span class="menace">${esc(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes")})));
-    const app = [...e.appareils].sort((a, b) => (b.nouveau - a.nouveau) || (b.en_ligne - a.en_ligne));
+    liste("menaces", menaces.map(x => ({a: `<span class="menace">${dom(x.domaine)}</span>`, sous: qui(x), v: pl(x.n, "requête", "requêtes")})));
+    const ligneApp = x => ({a: `<i class="pt ${x.en_ligne ? "ok" : ""}"></i>` + (x.ip ? qui({ip: x.ip, nom: x.nom || "Sans nom"}) : esc(x.nom || "Sans nom")),
+      sous: `<span>${esc(x.ip)}</span><span>${esc(x.mac)}</span>`});
+    // Les plus récents d'abord ; le reste est dans « Appareils »
+    const recents = [...nouveaux].sort((a, b) => b.premier - a.premier), autres = recents.length - 8;
+    liste("nouveaux-app", recents.slice(0, 8).map(x => ({...ligneApp(x), v: `vu le ${date(x.premier)}`})), "Aucun cette semaine");
+    if (autres > 0) $("nouveaux-app").insertAdjacentHTML("beforeend", `<li class="vide">et ${pl(autres, "autre", "autres")}, voir Appareils</li>`);
+    const app = [...e.appareils].sort((a, b) => (b.en_ligne - a.en_ligne) || (b.nouveau - a.nouveau));
     $("n-appareils").textContent = app.length ? `${fr(app.filter(x => x.en_ligne).length)} en ligne sur ${fr(app.length)}` : "";
-    liste("appareils", app.map(x => ({a: `<i class="pt ${x.en_ligne ? "ok" : ""}"></i>` + esc(x.nom || "Sans nom"), sous: `<span>${esc(x.ip)}</span><span>${esc(x.mac)}</span>`, v: x.nouveau ? '<span class="tag">nouveau</span>' : ""})), "Aucun bail DHCP");
+    liste("appareils", app.map(x => ({...ligneApp(x), v: x.nouveau ? '<span class="tag">nouveau</span>' : ""})), "Aucun bail DHCP");
     const nomMac = Object.fromEntries(e.appareils.filter(x => x.nom).map(x => [x.mac.toLowerCase(), x.nom]));
     $("n-fixes").textContent = e.ip_fixes.length ? fr(e.ip_fixes.length) : "";
-    liste("fixes", e.ip_fixes.map(x => ({a: esc(x.ip), sous: `<span>${esc(x.mac)}</span><span>${esc(x.interface)}</span>`, v: esc(nomMac[x.mac] || "")})), "Aucune");
+    liste("fixes", e.ip_fixes.map(x => ({a: qui({ip: x.ip, nom: x.nom || nomMac[x.mac]}), sous: `<span>${esc(x.mac)}</span><span>${esc(x.interface)}</span>`, v: x.nom || nomMac[x.mac] ? esc(x.ip) : ""})), "Aucune");
     liste("sansdns", e.sans_dns.map(x => ({a: qui(x), sous: `vers ${esc(x.vers)}`, v: heure(x.vu)})));
     const fc = part(e.gros_consommateurs, x => x.debit);
     liste("conso", e.gros_consommateurs.map(x => ({a: qui(x), v: b(x.debit), f: fc(x)})), "Calme");
@@ -303,9 +403,10 @@ async function maj() {
     $("total-dns").textContent = `${pl(e.dns.requetes_24h, "requête", "requêtes")} en 24 h`;
     const fq = part(e.dns.clients, x => x.n);
     liste("clients", e.dns.clients.map(x => ({a: qui(x), v: pl(x.n, "requête", "requêtes"), f: fq(x)})));
-    const fd = part(e.dns.domaines, x => x[1]);
-    liste("domaines", e.dns.domaines.map(x => ({a: esc(x[0]), v: pl(x[1], "requête", "requêtes"), f: fd(x)})));
-    liste("nouveaux", e.dns.nouveaux_domaines.map(([d, t]) => ({a: esc(d), v: heure(t)})));
+    groupes("domaines", e.dns.groupes, "Aucune requête");
+    $("n-attendu").textContent = pl(e.dns.attendu.n, "requête", "requêtes");
+    liste("attendu", e.dns.attendu.domaines.map(([d, n]) => ({a: dom(d), v: fr(n)})), "Aucun");
+    liste("nouveaux", e.dns.nouveaux_domaines.map(([d, t]) => ({a: dom(d), v: heure(t)})));
     liste("interfaces", Object.entries(e.interfaces).map(([i, d]) => ({
       a: `<i class="pt ${d.etat === "up" ? "ok" : d.etat === "down" ? "ko" : ""}"></i>${esc(i)}`,
       sous: [d.etat === "down" ? "<span>coupé</span>" : "", d.vitesse ? `<span>${vitesse(d.vitesse)}</span>` : "", d.erreurs ? `<span>${pl(d.erreurs, "erreur", "erreurs")}</span>` : "", d.pertes ? `<span>${pl(d.pertes, "paquet perdu", "paquets perdus")}</span>` : ""].join(""),

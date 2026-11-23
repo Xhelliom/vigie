@@ -36,7 +36,12 @@ struct Config {
     dhcp: Vec<(String, u32, u32)>, // (nom, début, fin)
     sondes: Vec<String>,
     services: Vec<String>,
+    connus: Vec<String>,            // suffixes de domaines « attendus », mis à part du classement
+    noms: HashMap<String, String>,  // ip -> nom, en repli quand le bail DHCP n'en donne pas
 }
+
+/// Domaines de temps courants : le seul trafic « attendu » connu d'office.
+const NTP: &str = "pool.ntp.org time.cloudflare.com time.google.com time.apple.com time.windows.com time.nist.gov ntp.ubuntu.com";
 
 fn env(nom: &str, defaut: &str) -> String {
     std::env::var(nom).unwrap_or_else(|_| defaut.into())
@@ -59,7 +64,38 @@ fn cfg() -> &'static Config {
         dhcp: env("VIGIE_DHCP", "").split_whitespace().map(|p| plage(p).unwrap_or_else(|| panic!("VIGIE_DHCP invalide : {p}"))).collect(),
         sondes: env("VIGIE_SONDES", "1.1.1.1").split_whitespace().map(String::from).collect(),
         services: env("VIGIE_SERVICES", "dnsmasq unbound nftables").split_whitespace().map(String::from).collect(),
+        connus: env("VIGIE_DOMAINES_CONNUS", NTP).split_whitespace().map(|d| d.trim_matches('.').to_lowercase()).collect(),
+        noms: analyser_noms(&env("VIGIE_NOMS", "")),
     })
+}
+
+/// `ip=nom ip=nom` → table ip -> nom (entrées mal formées ignorées).
+fn analyser_noms(s: &str) -> HashMap<String, String> {
+    s.split_whitespace()
+        .filter_map(|p| p.split_once('='))
+        .filter(|(ip, nom)| ip.parse::<Ipv4Addr>().is_ok() && !nom.is_empty())
+        .map(|(ip, nom)| (ip.into(), nom.into()))
+        .collect()
+}
+
+/// `d` vaut un des suffixes ou en est un sous-domaine (`a.pool.ntp.org` pour `pool.ntp.org`).
+fn connu(d: &str, suffixes: &[String]) -> bool {
+    let d = d.trim_end_matches('.');
+    suffixes.iter().any(|s| d.strip_suffix(s.as_str()).is_some_and(|r| r.is_empty() || r.ends_with('.')))
+}
+
+/// Domaine principal : deux derniers labels, trois si l'avant-dernier est un suffixe court (`bbc.co.uk`).
+/// shortcut: heuristique sans la Public Suffix List (rate github.io, blogspot…), à remplacer si les regroupements gênent.
+fn principal(d: &str) -> &str {
+    let d = d.trim_end_matches('.');
+    let l: Vec<&str> = d.split('.').collect();
+    if l.len() <= 2 {
+        return d;
+    }
+    const COURTS: [&str; 11] = ["co", "com", "net", "org", "gov", "gouv", "ac", "edu", "ne", "or", "go"];
+    let n = if l[l.len() - 1].len() == 2 && COURTS.contains(&l[l.len() - 2]) { 3 } else { 2 };
+    let garde: usize = l[l.len() - n..].iter().map(|x| x.len() + 1).sum::<usize>() - 1;
+    &d[d.len() - garde..]
 }
 
 /// `nom,début,fin` (nom facultatif) → plage DHCP.
@@ -585,6 +621,56 @@ fn plus_frequents<K: Hash + Eq + Copy>(cles: impl Iterator<Item = K>, n: usize) 
     v
 }
 
+/// Requêtes → (trafic attendu, domaines groupés par domaine principal), en JSON.
+fn repartir<'a>(domaines: impl Iterator<Item = &'a str>) -> (Value, Value) {
+    let mut par_domaine: HashMap<&str, usize> = HashMap::new();
+    for d in domaines {
+        *par_domaine.entry(d).or_default() += 1;
+    }
+    let (mut connus, mut groupes): (Vec<(&str, usize)>, HashMap<&str, (usize, Vec<(&str, usize)>)>) = Default::default();
+    for (d, n) in par_domaine {
+        if connu(d, &cfg().connus) {
+            connus.push((d, n));
+        } else {
+            let g = groupes.entry(principal(d)).or_default();
+            g.0 += n;
+            g.1.push((d, n));
+        }
+    }
+    let tri = |a: &(&str, usize), b: &(&str, usize)| b.1.cmp(&a.1).then(a.0.cmp(b.0));
+    connus.sort_by(tri);
+    let total: usize = connus.iter().map(|c| c.1).sum();
+    let mut groupes: Vec<_> = groupes.into_iter().collect();
+    groupes.sort_by(|a, b| b.1 .0.cmp(&a.1 .0).then(a.0.cmp(b.0)));
+    groupes.truncate(25);
+    let groupes: Vec<Value> = groupes.into_iter().map(|(g, (n, mut sous))| {
+        sous.sort_by(tri);
+        let nb_sous = sous.len();
+        sous.truncate(10);
+        json!({"domaine": g, "n": n, "nb_sous": nb_sous, "sous": sous})
+    }).collect();
+    connus.truncate(20);
+    (json!({"n": total, "domaines": connus}), json!(groupes))
+}
+
+/// Fiche d'un appareil : ses domaines et ce qui a été bloqué pour lui sur 24 h.
+fn fiche(ip: &str) -> Value {
+    let e = verrou();
+    let nom = e.appareils.values().find(|a| a.ip.as_deref() == Some(ip)).and_then(|a| a.nom.clone())
+        .or_else(|| cfg().noms.get(ip).cloned());
+    let requetes: Vec<&str> = e.requetes.iter().filter(|r| r.1 == ip).map(|r| r.2.as_str()).collect();
+    let (attendu, groupes) = repartir(requetes.iter().copied());
+    let bloques: Vec<_> = e.bloques.iter().filter(|b| b.1 == ip).collect();
+    json!({
+        "ip": ip, "nom": nom, "requetes_24h": requetes.len(),
+        "groupes": groupes, "attendu": attendu,
+        "pub": bloques.iter().filter(|b| b.3 == "pub").count(),
+        "menaces": bloques.iter().filter(|b| b.3 == "menaces").count(),
+        "bloques": plus_frequents(bloques.iter().map(|b| (b.2.as_str(), b.3)), 20).into_iter()
+            .map(|((d, l), n)| json!({"domaine": d, "liste": l, "n": n})).collect::<Vec<_>>(),
+    })
+}
+
 fn etat() -> Value {
     let t = maintenant();
     let (systeme, historique_wan) = (systeme(), vnstat_wan());
@@ -614,7 +700,7 @@ fn etat() -> Value {
     let e = &*guard;
     let noms: HashMap<&str, Option<&str>> =
         e.appareils.values().filter_map(|a| Some((a.ip.as_deref()?, a.nom.as_deref()))).collect();
-    let nom = |ip: &str| noms.get(ip).copied().flatten();
+    let nom = |ip: &str| noms.get(ip).copied().flatten().or_else(|| cfg().noms.get(ip).map(String::as_str));
 
     let mut appareils: Vec<_> = e.appareils.iter().map(|(m, a)| (m, a, t - a.premier < 7.0 * 86400.0)).collect();
     appareils.sort_by(|a, b| (!a.2, a.1.ip.as_deref().unwrap_or("")).cmp(&(!b.2, b.1.ip.as_deref().unwrap_or(""))));
@@ -624,6 +710,7 @@ fn etat() -> Value {
     nouveaux.sort_by(|a, b| b.1.total_cmp(a.1));
     let mut sans_dns: Vec<_> = e.sans_dns.iter().collect();
     sans_dns.sort_by(|a, b| b.1.total_cmp(a.1));
+    let (attendu, groupes) = repartir(e.requetes.iter().map(|r| r.2.as_str()));
 
     json!({
         "maintenant": t,
@@ -632,11 +719,12 @@ fn etat() -> Value {
         "wan": cfg().wan,
         "historique_wan": historique_wan,
         "appareils": appareils.iter().map(|(m, a, nouveau)| json!({
-            "mac": m, "premier": a.premier, "ip": a.ip, "nom": a.nom, "vu": a.vu, "nouveau": nouveau,
+            "mac": m, "premier": a.premier, "ip": a.ip, "vu": a.vu, "nouveau": nouveau,
+            "nom": a.nom.as_deref().or_else(|| a.ip.as_deref().and_then(|ip| cfg().noms.get(ip)).map(String::as_str)),
             "en_ligne": en_ligne(&m.to_lowercase()), "bail": baux.iter().any(|b| b.0 == m.to_lowercase()),
         })).collect::<Vec<_>>(),
         "reseaux": reseaux,
-        "ip_fixes": ip_fixes.iter().map(|(ip, mac, dev)| json!({"ip": ip, "mac": mac, "interface": dev})).collect::<Vec<_>>(),
+        "ip_fixes": ip_fixes.iter().map(|(ip, mac, dev)| json!({"ip": ip, "mac": mac, "interface": dev, "nom": cfg().noms.get(ip.as_str())})).collect::<Vec<_>>(),
         "sante": {
             "latences": e.latences.iter().map(|(n, c, ms)| json!({"nom": n, "cible": c, "ms": ms})).collect::<Vec<_>>(),
             "services": e.services.iter().map(|(n, s)| json!({"nom": n, "etat": s})).collect::<Vec<_>>(),
@@ -648,6 +736,8 @@ fn etat() -> Value {
             "clients": plus_frequents(e.requetes.iter().map(|r| r.1.as_str()), 15).into_iter()
                 .map(|(c, n)| json!({"ip": c, "nom": nom(c), "n": n})).collect::<Vec<_>>(),
             "domaines": plus_frequents(e.requetes.iter().map(|r| r.2.as_str()), 25),
+            "groupes": groupes,
+            "attendu": attendu,
             "menaces": plus_frequents(e.bloques.iter().filter(|b| b.3 == "menaces").map(|b| (b.1.as_str(), b.2.as_str())), 30)
                 .into_iter().map(|((c, d), n)| json!({"ip": c, "nom": nom(c), "domaine": d, "n": n})).collect::<Vec<_>>(),
             "pub_bloquee": plus_frequents(e.bloques.iter().filter(|b| b.3 == "pub").map(|b| b.1.as_str()), 10)
@@ -684,6 +774,13 @@ fn servir(mut s: TcpStream) {
     let mut mots = requete.split_whitespace();
     match (mots.next(), mots.next()) {
         (Some("GET"), Some("/api/etat")) => repondre(&mut s, "200 OK", "application/json", etat().to_string().as_bytes()),
+        (Some("GET"), Some(chemin)) if chemin.starts_with("/api/appareil?") => {
+            let ip = chemin.split_once('?').and_then(|(_, q)| q.split('&').find_map(|kv| kv.strip_prefix("ip=")));
+            match ip.filter(|ip| ip.parse::<Ipv4Addr>().is_ok()) {
+                Some(ip) => repondre(&mut s, "200 OK", "application/json", fiche(ip).to_string().as_bytes()),
+                None => repondre(&mut s, "400 Bad Request", "text/plain", b"ip invalide"),
+            }
+        }
         (Some("GET"), Some("/" | "/index.html")) => {
             let page = match &cfg().page {
                 Some(p) => fs::read(p).ok(),
@@ -757,6 +854,28 @@ mod tests {
         assert_eq!(analyser_ping("1 packets transmitted, 0 received"), None);
         assert_eq!(plage("principal,192.168.1.60,192.168.1.98"), Some(("principal".into(), 0xc0a8_013c, 0xc0a8_0162)));
         assert_eq!(plage(",10.0.0.9,10.0.0.1"), None);
+    }
+
+    #[test]
+    fn domaines() {
+        assert_eq!(principal("a.b.cdn-exemple.com"), "cdn-exemple.com");
+        assert_eq!(principal("www.bbc.co.uk"), "bbc.co.uk");
+        assert_eq!(principal("x.service-public.gouv.fr"), "service-public.gouv.fr");
+        assert_eq!(principal("exemple.fr"), "exemple.fr");
+        assert_eq!(principal("routeur"), "routeur");
+        assert_eq!(principal("a.exemple.fr."), "exemple.fr");
+        let c = vec!["pool.ntp.org".to_string(), "lan".to_string()];
+        assert!(connu("2.nixos.pool.ntp.org", &c) && connu("pool.ntp.org", &c) && connu("nas.lan", &c));
+        assert!(!connu("xpool.ntp.org", &c) && !connu("ntp.org", &c) && !connu("plan", &c));
+    }
+
+    #[test]
+    fn noms() {
+        let n = analyser_noms("10.0.0.2=nas  10.0.0.3= pasip=x 10.0.0.4=tele");
+        assert_eq!(n.len(), 2);
+        assert_eq!(n.get("10.0.0.2").map(String::as_str), Some("nas"));
+        assert_eq!(n.get("10.0.0.4").map(String::as_str), Some("tele"));
+        assert!(analyser_noms("").is_empty());
     }
 
     #[test]
